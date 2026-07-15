@@ -5,7 +5,7 @@
 </head>
 <body>
 <div id="HtspTunerConfigPage" data-role="page" class="page type-interior pluginConfigurationPage"
-     data-controller="__plugin/htsptuner">
+     data-require="emby-input,emby-button,emby-select,emby-checkbox">
     <div data-role="content">
         <div class="content-primary">
             <form id="HtspTunerConfigForm">
@@ -15,7 +15,6 @@
                         also the <strong>fallback connection for "HTSP Tuner" devices</strong> until Jellyfin's
                         UI can show per-tuner fields, so set them here even if you add HTSP under
                         <em>Add Tuner Device</em>.</p>
-                    <div id="htspStatus" style="margin:0.5em 0;color:#7cb;"></div>
                 </div>
 
                 <div class="inputContainer">
@@ -26,14 +25,17 @@
                 <div class="inputContainer">
                     <label class="inputLabel inputLabelUnfocused" for="HtspPort">HTSP port</label>
                     <input is="emby-input" type="number" id="HtspPort" min="1" max="65535" required />
+                    <div class="fieldDescription">Tvheadend's HTSP port. Default <code>9982</code>.</div>
                 </div>
                 <div class="inputContainer">
                     <label class="inputLabel inputLabelUnfocused" for="HttpPort">HTTP port</label>
                     <input is="emby-input" type="number" id="HttpPort" min="1" max="65535" required />
-                    <div class="fieldDescription">Used for channel icons and the HTTP streaming fallback.</div>
+                    <div class="fieldDescription">Tvheadend's HTTP port. Used for channel icons and the HTTP
+                        streaming fallback. Default <code>9981</code>.</div>
                 </div>
                 <div class="checkboxContainer checkboxContainer-withDescription">
                     <label><input is="emby-checkbox" type="checkbox" id="UseHttps" /><span>Use HTTPS for HTTP requests</span></label>
+                    <div class="fieldDescription">Enable if Tvheadend's HTTP interface (icons / fallback) is served over TLS.</div>
                 </div>
                 <div class="inputContainer">
                     <label class="inputLabel inputLabelUnfocused" for="WebRoot">Web root</label>
@@ -52,13 +54,6 @@
 
                 <div class="verticalSection">
                     <h2 class="sectionTitle">Streaming</h2>
-                </div>
-                <div class="selectContainer">
-                    <label class="selectLabel" for="StreamingMode">Streaming mode</label>
-                    <select is="emby-select" id="StreamingMode">
-                        <option value="0">Native HTSP (remux to MPEG-TS)</option>
-                        <option value="1">Tvheadend HTTP (fallback)</option>
-                    </select>
                 </div>
                 <div class="inputContainer">
                     <label class="inputLabel inputLabelUnfocused" for="Profile">Streaming profile</label>
@@ -109,6 +104,7 @@
                     <div class="fieldDescription">Optional Tvheadend DVR profile UUID for new recordings.</div>
                 </div>
 
+                <div id="htspStatus" style="margin:0.75em 0;min-height:1.2em;color:#7cb;"></div>
                 <div>
                     <button is="emby-button" type="button" id="TestConnection" class="raised block">
                         <span>Test connection</span>
@@ -132,7 +128,6 @@
             function load(cfg) {
                 fields.forEach(function (f) { document.getElementById(f).value = cfg[f] == null ? "" : cfg[f]; });
                 checks.forEach(function (f) { document.getElementById(f).checked = !!cfg[f]; });
-                document.getElementById("StreamingMode").value = String(cfg.StreamingMode || 0);
             }
 
             function collect(cfg) {
@@ -150,7 +145,6 @@
                 cfg.PostPaddingSeconds = parseInt(document.getElementById("PostPaddingSeconds").value, 10);
                 cfg.DvrConfig = document.getElementById("DvrConfig").value;
                 cfg.AutoGuideRefreshMinutes = parseInt(document.getElementById("AutoGuideRefreshMinutes").value, 10) || 0;
-                cfg.StreamingMode = parseInt(document.getElementById("StreamingMode").value, 10);
                 checks.forEach(function (f) { cfg[f] = document.getElementById(f).checked; });
                 return cfg;
             }
@@ -159,6 +153,7 @@
 
             document.querySelector("#HtspTunerConfigPage").addEventListener("pageshow", function () {
                 Dashboard.showLoadingMsg();
+                showStatus("");
                 ApiClient.getPluginConfiguration(pluginId).then(function (cfg) {
                     load(cfg);
                     Dashboard.hideLoadingMsg();
@@ -184,6 +179,7 @@
                 ApiClient.getPluginConfiguration(pluginId).then(function (cfg) {
                     ApiClient.updatePluginConfiguration(pluginId, collect(cfg)).then(function (r) {
                         Dashboard.processPluginConfigurationUpdateResult(r);
+                        showStatus("Saved.");
                     });
                 });
                 return false;

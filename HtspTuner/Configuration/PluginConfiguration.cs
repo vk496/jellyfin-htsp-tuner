@@ -3,25 +3,6 @@ using MediaBrowser.Model.Plugins;
 namespace HtspTuner.Configuration;
 
 /// <summary>
-/// How the plugin obtains the media bytes for a channel.
-/// </summary>
-public enum StreamingMode
-{
-    /// <summary>
-    /// Subscribe over HTSP and remux the elementary streams into MPEG-TS locally.
-    /// This is the native path: no second tuner subscription, no ffprobe, exact codec
-    /// metadata straight from <c>subscriptionStart</c>.
-    /// </summary>
-    Htsp = 0,
-
-    /// <summary>
-    /// Fall back to Tvheadend's HTTP streaming endpoint, authorised with an HTSP ticket.
-    /// Kept only as an escape hatch for muxing problems.
-    /// </summary>
-    Http = 1,
-}
-
-/// <summary>
 /// Plugin settings. Defaults must be a valid configuration on their own.
 /// </summary>
 public class PluginConfiguration : BasePluginConfiguration
@@ -62,9 +43,6 @@ public class PluginConfiguration : BasePluginConfiguration
     /// blocking the tuner — it is live TV. Bounds memory so a stalled client cannot exhaust the host.
     /// </summary>
     public int MaxBufferMb { get; set; } = 100;
-
-    /// <summary>Gets or sets the streaming mode.</summary>
-    public StreamingMode StreamingMode { get; set; } = StreamingMode.Htsp;
 
     /// <summary>
     /// Gets or sets the base URL Jellyfin uses to read the plugin's own live stream
