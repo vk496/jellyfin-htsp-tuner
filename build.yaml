@@ -47,6 +47,12 @@ artifacts:
   - "HtspTuner.dll"
 
 changelog: >-
+  ### 1.0.0.4
+
+  - Honour Tvheadend's subscriptionGrace when starting a channel, so slow-tuning muxes (e.g.
+    satellite LNB lock) are no longer cut off by a fixed 15s timeout and get the time Tvheadend
+    asks for.
+
   ### 1.0.0.3
 
   - Fix HEVC channels never starting (black screen) on direct-play clients: the muxer now sets

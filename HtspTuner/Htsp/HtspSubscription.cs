@@ -41,6 +41,7 @@ internal sealed class HtspSubscription : IAsyncDisposable
     private readonly object _gate = new();
 
     private TaskCompletionSource<HtspSubscriptionStart>? _startTcs;
+    private CancellationTokenSource? _startTimeoutCts;
     private bool _errorSeen;
     private volatile bool _stopped;
 
@@ -131,8 +132,16 @@ internal sealed class HtspSubscription : IAsyncDisposable
         // subscribe returns an empty ack; the real result is the async subscriptionStart/Status.
         await _connection.SendAsync(subscribe, cancellationToken).ConfigureAwait(false);
 
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutCts.CancelAfter(TimeSpan.FromSeconds(15));
+        var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        // Base budget for a channel to start. Tvheadend extends this via subscriptionGrace while it is still
+        // tuning (a satellite LNB lock can take a good while); HandleGrace below pushes the deadline out so
+        // slow-tuning channels are not cut off prematurely.
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(20));
+        lock (_gate)
+        {
+            _startTimeoutCts = timeoutCts;
+        }
+
         try
         {
             var start = await tcs.Task.WaitAsync(timeoutCts.Token).ConfigureAwait(false);
@@ -155,6 +164,15 @@ internal sealed class HtspSubscription : IAsyncDisposable
             await SafeUnsubscribeAsync().ConfigureAwait(false);
             throw;
         }
+        finally
+        {
+            lock (_gate)
+            {
+                _startTimeoutCts = null;
+            }
+
+            timeoutCts.Dispose();
+        }
     }
 
     /// <summary>Routes one subscription-scoped event into this subscription. Never throws.</summary>
@@ -175,8 +193,25 @@ internal sealed class HtspSubscription : IAsyncDisposable
                     HandleStop(msg);
                     break;
                 case "subscriptionGrace":
-                    _logger.LogDebug(
-                        "Subscription {Id} grace {Seconds}s", Id, msg.GetInt("graceTimeout"));
+                    var grace = (int)msg.GetInt("graceTimeout");
+                    _logger.LogDebug("Subscription {Id} grace {Seconds}s", Id, grace);
+                    if (grace > 0)
+                    {
+                        lock (_gate)
+                        {
+                            try
+                            {
+                                // Tvheadend is telling us it needs more time to tune; wait as long as it
+                                // asks (plus a small margin) instead of failing at the base budget.
+                                _startTimeoutCts?.CancelAfter(TimeSpan.FromSeconds(grace + 5));
+                            }
+                            catch (ObjectDisposedException)
+                            {
+                                // start already completed; nothing to extend
+                            }
+                        }
+                    }
+
                     break;
                 case "subscriptionSkip":
                     break;
