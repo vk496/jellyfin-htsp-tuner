@@ -15,17 +15,17 @@ subscription — on the table, and it is a long-standing open request there:
 streams (`muxpkt`), and remuxes them into MPEG-TS **inside Jellyfin**. Nothing is fetched over
 HTTP for playback.
 
-## Two ways to use it
+## How to use it
 
-The plugin registers on both of Jellyfin's Live TV extension points — pick whichever fits:
+Add it like any other tuner: **Live TV → Add Tuner Device → HTSP Tuner**. You can add
+**multiple tuners** (one per Tvheadend server). Validating a tuner **auto-registers a matching
+"HTSP" guide** under *TV Guide Data Providers*, so EPG works with no manual channel mapping.
 
-1. **Integrated service** — configure Tvheadend on the plugin's own settings page. Channels,
-   EPG, and DVR timers appear automatically, all over HTSP. Single Tvheadend server.
-2. **Tuner device** — go to **Live TV → Add Tuner Device** and pick **HTSP Tuner**. Supports
-   **multiple tuners** (one per Tvheadend server). Adding a tuner **auto-registers a matching
-   "HTSP" guide** under *TV Guide Data Providers*, so EPG works with no manual channel mapping.
-
-Use one model or the other, not both against the same server (they would list channels twice).
+The plugin does nothing until you add a tuner — there is no separate "integrated service" mode.
+Jellyfin's web UI cannot yet render per-tuner config fields for a plugin tuner, so the plugin's
+own **settings page holds the connection details** (host, ports, credentials) that a tuner falls
+back to. Set them there; the day Jellyfin allows per-tuner fields, those take precedence
+automatically.
 
 ## Features
 
@@ -48,8 +48,9 @@ Use one model or the other, not both against the same server (they would list ch
   a fresh viewer joins at the last key frame for a clean, quick start.
 - **Radio channels** — audio-only services are surfaced as radio.
 - **Live EPG** — guide data is pushed over HTSP async metadata, not polled per channel.
-- **DVR timers + series rules** — create/cancel Tvheadend timers and autorec (series) rules
-  through Jellyfin's recording UI.
+- **Recording** — Jellyfin's own DVR records the tuner stream, like any tuner. (Native Tvheadend
+  DVR — TVH timers and autorec rules — is implemented but not wired into the tuner-only model
+  yet.)
 - **Channel tags**, **fast same-mux switching**, and a **Test connection** button on the
   settings page so a wrong host/credential shows in the UI instead of the log.
 
@@ -98,9 +99,10 @@ export JELLYFIN_URL=http://localhost:8096         # optional (this is the defaul
 
 ## After installing
 
-Open **Dashboard → Plugins → HTSP Tuner**, enter your Tvheadend host, ports and credentials,
-and click **Test connection** to confirm. Then either use the integrated service as-is, or add
-an **HTSP Tuner** device under **Live TV → Add Tuner Device** — see *Two ways to use it* above.
+1. Open **Dashboard → Plugins → HTSP Tuner**, enter your Tvheadend host, ports and credentials,
+   and click **Test connection** to confirm, then **Save**.
+2. Go to **Live TV → Add Tuner Device → HTSP Tuner** and save it (leave the URL blank to use the
+   settings from step 1). The channels and an HTSP guide appear automatically.
 
 ## What works / what doesn't yet
 
@@ -118,8 +120,9 @@ an **HTSP Tuner** device under **Live TV → Add Tuner Device** — see *Two way
 
 **Not done yet / rough edges:**
 
-- **Recordings *playback*** (browsing finished Tvheadend recordings in Jellyfin) is not wired
-  up yet; **scheduling** recordings and series rules does work.
+- **Recording** goes through Jellyfin's own DVR (it records the tuner stream). Native Tvheadend
+  DVR (TVH timers/autorec, browsing TVH recordings) is implemented but not wired into the
+  tuner-only model yet.
 - A tuner/signal-status dashboard is not surfaced in the UI (the data is collected).
 - HEVC (incl. 4K HDR) remuxes and plays on HEVC-capable clients; **browsers cannot decode
   HEVC**, so those clients fall back to a server transcode — enable hardware transcoding for

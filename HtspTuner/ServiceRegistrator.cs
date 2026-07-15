@@ -8,25 +8,26 @@ using Microsoft.Extensions.DependencyInjection;
 namespace HtspTuner;
 
 /// <summary>
-/// Registers the plugin's services. Jellyfin has no auto-discovery for <see cref="ILiveTvService"/>;
-/// a plugin must register it here, which Jellyfin invokes before building the container.
+/// Registers the plugin's services. Jellyfin has no auto-discovery for these; a plugin must register
+/// them here, which Jellyfin invokes before building the container.
 /// </summary>
 public class ServiceRegistrator : IPluginServiceRegistrator
 {
     /// <inheritdoc/>
     public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
     {
-        serviceCollection.AddSingleton<HtspLiveTvService>();
-        serviceCollection.AddSingleton<ILiveTvService>(sp => sp.GetRequiredService<HtspLiveTvService>());
-
-        // Also expose HTSP as a native tuner (shows under "Add Tuner Device", multiple instances) plus a
-        // matching guide provider (shows under "TV Guide Data Providers"). They share one instance so the
-        // guide and tuner reuse connections and channel ids. Users pick one model: the integrated service
-        // (plugin config) or tuner devices + the HTSP guide.
+        // HTSP is a native tuner: it shows under "Add Tuner Device" (multiple instances, one per Tvheadend
+        // server) and, on validation, auto-registers a matching guide under "TV Guide Data Providers". The
+        // tuner and guide share one instance so they reuse connections and channel ids. The plugin's own
+        // settings page is only the fallback connection details for a tuner (until Jellyfin's UI can show
+        // per-tuner fields) -- so the plugin does nothing until the user actually adds a tuner.
         serviceCollection.AddSingleton<HtspTunerHost>();
         serviceCollection.AddSingleton<ITunerHost>(sp => sp.GetRequiredService<HtspTunerHost>());
         serviceCollection.AddSingleton<IListingsProvider, HtspListingsProvider>();
 
-        // Recordings playback (IChannel/RecordingsChannel) lands after live TV is verified end to end.
+        // NOTE: HtspLiveTvService (the integrated ILiveTvService) is intentionally NOT registered. It was a
+        // second, config-only way to use the plugin that listed channels without a tuner and duplicated the
+        // tuner path; the class is kept for its Tvheadend-native DVR logic, to be reattached to the tuner
+        // later. With only the tuner host, DVR is handled by Jellyfin core recording the tuner stream.
     }
 }

@@ -35,10 +35,11 @@ description: >-
   event; a short, one-time probe of the plugin's own muxed output then fills in the
   fields HTSP cannot carry -- interlacing, HDR/colour, bit depth, profile and level -- so
   Jellyfin makes correct direct-play, deinterlace and transcode decisions. All of this
-  happens without opening a second tuner subscription. Supports fast same-multiplex
-  channel switching, radio channels, live EPG pushed over async metadata, Tvheadend DVR
-  timers and autorec series rules, channel tags, stream sharing between clients, and
-  tuner/signal statistics.
+  happens without opening a second tuner subscription. Add it under Live TV -> Add Tuner
+  Device; a matching HTSP guide is registered automatically. Supports multiple Tvheadend
+  servers, fast same-multiplex channel switching, radio channels, live EPG pushed over
+  async metadata, recording via Jellyfin's DVR, channel tags, stream sharing between
+  clients, and tuner/signal statistics.
 
 # Files pulled into the release zip. Only our own assembly ships; Jellyfin's API assemblies
 # are already loaded by the server (csproj: ExcludeAssets="runtime" Private="false").
@@ -46,16 +47,16 @@ artifacts:
   - "HtspTuner.dll"
 
 changelog: >-
-  ### 1.0.0.0
+  ### 1.0.0.2
 
-  - Initial release.
+  - Fix the plugin settings page: fields now load and persist (it referenced a controller
+    that did not exist, so it never initialised).
 
-  - Native HTSP subscription streaming with local MPEG-TS remuxing (no HTTP passthrough).
+  - Tuner-only model: the plugin does nothing until you add an HTSP tuner device. Removed the
+    separate config-only "integrated service" and the unused "Streaming mode" setting.
 
-  - Exact codec/resolution/language metadata from subscriptionStart; no ffprobe, no second
-    tuner subscription.
+  - Native HTSP streaming with local MPEG-TS remux; metadata from subscriptionStart enriched
+    by a one-time self-probe (interlacing, HDR/colour, bit depth, profile/level).
 
-  - Fast same-multiplex channel switching and stream sharing.
-
-  - Radio channels, live EPG via async metadata, DVR timers, autorec series rules, channel
-    tags and tuner/signal statistics.
+  - Multiple tuners, live EPG, radio, fast same-mux switching, stream sharing, recording via
+    Jellyfin's DVR, channel tags and tuner/signal statistics.
