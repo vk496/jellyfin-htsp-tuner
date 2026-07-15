@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>HTSP Tuner</title>
+</head>
+<body>
+<div id="HtspTunerConfigPage" data-role="page" class="page type-interior pluginConfigurationPage"
+     data-controller="__plugin/htsptuner">
+    <div data-role="content">
+        <div class="content-primary">
+            <form id="HtspTunerConfigForm">
+                <div class="verticalSection">
+                    <h2 class="sectionTitle">Tvheadend (HTSP)</h2>
+                    <p class="fieldDescription">These settings drive the integrated Live TV service. They are
+                        also the <strong>fallback connection for "HTSP Tuner" devices</strong> until Jellyfin's
+                        UI can show per-tuner fields, so set them here even if you add HTSP under
+                        <em>Add Tuner Device</em>.</p>
+                    <div id="htspStatus" style="margin:0.5em 0;color:#7cb;"></div>
+                </div>
+
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="Host">Host</label>
+                    <input is="emby-input" type="text" id="Host" required />
+                    <div class="fieldDescription">Tvheadend host name or IP.</div>
+                </div>
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="HtspPort">HTSP port</label>
+                    <input is="emby-input" type="number" id="HtspPort" min="1" max="65535" required />
+                </div>
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="HttpPort">HTTP port</label>
+                    <input is="emby-input" type="number" id="HttpPort" min="1" max="65535" required />
+                    <div class="fieldDescription">Used for channel icons and the HTTP streaming fallback.</div>
+                </div>
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label><input is="emby-checkbox" type="checkbox" id="UseHttps" /><span>Use HTTPS for HTTP requests</span></label>
+                </div>
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="WebRoot">Web root</label>
+                    <input is="emby-input" type="text" id="WebRoot" />
+                    <div class="fieldDescription">Only if Tvheadend sits behind a reverse proxy path.</div>
+                </div>
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="Username">User name</label>
+                    <input is="emby-input" type="text" id="Username" autocomplete="off" />
+                    <div class="fieldDescription">Leave empty for an anonymous Tvheadend.</div>
+                </div>
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="Password">Password</label>
+                    <input is="emby-input" type="password" id="Password" autocomplete="off" />
+                </div>
+
+                <div class="verticalSection">
+                    <h2 class="sectionTitle">Streaming</h2>
+                </div>
+                <div class="selectContainer">
+                    <label class="selectLabel" for="StreamingMode">Streaming mode</label>
+                    <select is="emby-select" id="StreamingMode">
+                        <option value="0">Native HTSP (remux to MPEG-TS)</option>
+                        <option value="1">Tvheadend HTTP (fallback)</option>
+                    </select>
+                </div>
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="Profile">Streaming profile</label>
+                    <input is="emby-input" type="text" id="Profile" />
+                    <div class="fieldDescription">Tvheadend streaming profile passed to <code>subscribe</code>. Default <code>htsp</code>.</div>
+                </div>
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="SubscriptionWeight">Subscription weight</label>
+                    <input is="emby-input" type="number" id="SubscriptionWeight" min="0" max="1000" />
+                    <div class="fieldDescription">Higher wins when tuners are contended. Tvheadend's live default is 100.</div>
+                </div>
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="MaxBufferMb">Max buffer (MB)</label>
+                    <input is="emby-input" type="number" id="MaxBufferMb" min="4" max="4096" />
+                    <div class="fieldDescription">Per-channel in-memory buffer cap. When a client falls behind, oldest data is dropped rather than blocking.</div>
+                </div>
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="StreamBaseUrl">Stream base URL (advanced)</label>
+                    <input is="emby-input" type="text" id="StreamBaseUrl" placeholder="leave empty for loopback" />
+                    <div class="fieldDescription">Base URL Jellyfin uses to read the plugin's own live stream. Leave empty to use <code>http://127.0.0.1:&lt;port&gt;</code> (correct for a normal single-host install and avoids Jellyfin picking a wrong network interface). Only set this if Jellyfin's transcoder runs on a different host than its API.</div>
+                </div>
+
+                <div class="verticalSection">
+                    <h2 class="sectionTitle">Guide &amp; recordings</h2>
+                </div>
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label><input is="emby-checkbox" type="checkbox" id="ImportChannelTags" /><span>Import Tvheadend channel tags as genres</span></label>
+                </div>
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="AutoGuideRefreshMinutes">Auto guide refresh (min)</label>
+                    <input is="emby-input" type="number" id="AutoGuideRefreshMinutes" min="0" max="1440" />
+                    <div class="fieldDescription">EPG is streamed live over HTSP into an indexed cache, so a refresh is cheap. Refresh Jellyfin's guide at most this often when Tvheadend pushes changes. 0 = leave it to Jellyfin's schedule.</div>
+                </div>
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label><input is="emby-checkbox" type="checkbox" id="HideRecordingsChannel" /><span>Hide the recordings channel</span></label>
+                </div>
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="PrePaddingSeconds">Recording pre-padding (s)</label>
+                    <input is="emby-input" type="number" id="PrePaddingSeconds" min="0" />
+                </div>
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="PostPaddingSeconds">Recording post-padding (s)</label>
+                    <input is="emby-input" type="number" id="PostPaddingSeconds" min="0" />
+                </div>
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="DvrConfig">DVR configuration UUID</label>
+                    <input is="emby-input" type="text" id="DvrConfig" />
+                    <div class="fieldDescription">Optional Tvheadend DVR profile UUID for new recordings.</div>
+                </div>
+
+                <div>
+                    <button is="emby-button" type="button" id="TestConnection" class="raised block">
+                        <span>Test connection</span>
+                    </button>
+                    <button is="emby-button" type="submit" class="raised button-submit block">
+                        <span>Save</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script type="text/javascript">
+        (function () {
+            var pluginId = "48472334-959b-4838-a963-3a92e5a603d1";
+            var fields = ["Host", "HtspPort", "HttpPort", "WebRoot", "Username", "Password", "Profile",
+                "SubscriptionWeight", "MaxBufferMb", "StreamBaseUrl",
+                "PrePaddingSeconds", "PostPaddingSeconds", "DvrConfig", "AutoGuideRefreshMinutes"];
+            var checks = ["UseHttps", "ImportChannelTags", "HideRecordingsChannel"];
+
+            function load(cfg) {
+                fields.forEach(function (f) { document.getElementById(f).value = cfg[f] == null ? "" : cfg[f]; });
+                checks.forEach(function (f) { document.getElementById(f).checked = !!cfg[f]; });
+                document.getElementById("StreamingMode").value = String(cfg.StreamingMode || 0);
+            }
+
+            function collect(cfg) {
+                cfg.Host = document.getElementById("Host").value;
+                cfg.HtspPort = parseInt(document.getElementById("HtspPort").value, 10);
+                cfg.HttpPort = parseInt(document.getElementById("HttpPort").value, 10);
+                cfg.WebRoot = document.getElementById("WebRoot").value;
+                cfg.Username = document.getElementById("Username").value;
+                cfg.Password = document.getElementById("Password").value;
+                cfg.Profile = document.getElementById("Profile").value;
+                cfg.StreamBaseUrl = document.getElementById("StreamBaseUrl").value;
+                cfg.SubscriptionWeight = parseInt(document.getElementById("SubscriptionWeight").value, 10);
+                cfg.MaxBufferMb = parseInt(document.getElementById("MaxBufferMb").value, 10);
+                cfg.PrePaddingSeconds = parseInt(document.getElementById("PrePaddingSeconds").value, 10);
+                cfg.PostPaddingSeconds = parseInt(document.getElementById("PostPaddingSeconds").value, 10);
+                cfg.DvrConfig = document.getElementById("DvrConfig").value;
+                cfg.AutoGuideRefreshMinutes = parseInt(document.getElementById("AutoGuideRefreshMinutes").value, 10) || 0;
+                cfg.StreamingMode = parseInt(document.getElementById("StreamingMode").value, 10);
+                checks.forEach(function (f) { cfg[f] = document.getElementById(f).checked; });
+                return cfg;
+            }
+
+            function showStatus(msg) { document.getElementById("htspStatus").textContent = msg; }
+
+            document.querySelector("#HtspTunerConfigPage").addEventListener("pageshow", function () {
+                Dashboard.showLoadingMsg();
+                ApiClient.getPluginConfiguration(pluginId).then(function (cfg) {
+                    load(cfg);
+                    Dashboard.hideLoadingMsg();
+                });
+            });
+
+            document.querySelector("#TestConnection").addEventListener("click", function () {
+                showStatus("Testing…");
+                ApiClient.ajax({
+                    type: "POST",
+                    url: ApiClient.getUrl("HtspTuner/TestConnection"),
+                    data: JSON.stringify(collect({})),
+                    contentType: "application/json",
+                    dataType: "json"
+                }).then(function (r) {
+                    showStatus(r.Ok ? ("Connected: " + r.Message) : ("Failed: " + r.Message));
+                }).catch(function () { showStatus("Failed to reach Tvheadend."); });
+            });
+
+            document.querySelector("#HtspTunerConfigForm").addEventListener("submit", function (e) {
+                e.preventDefault();
+                Dashboard.showLoadingMsg();
+                ApiClient.getPluginConfiguration(pluginId).then(function (cfg) {
+                    ApiClient.updatePluginConfiguration(pluginId, collect(cfg)).then(function (r) {
+                        Dashboard.processPluginConfigurationUpdateResult(r);
+                    });
+                });
+                return false;
+            });
+        })();
+    </script>
+</div>
+</body>
+</html>

@@ -1,0 +1,74 @@
+{
+  "streams": [
+    {
+      "index": 3,
+      "type": "TELETEXT"
+    },
+    {
+      "index": 4,
+      "type": "H264",
+      "width": 1920,
+      "height": 1080,
+      "duration": 3600,
+      "aspect_num": 16,
+      "aspect_den": 9
+    },
+    {
+      "index": 5,
+      "type": "EAC3",
+      "language": "spa",
+      "audio_type": 0,
+      "channels": 2,
+      "rate": 3,
+      "rds_uecp": 0
+    },
+    {
+      "index": 6,
+      "type": "EAC3",
+      "language": "qaa",
+      "audio_type": 0,
+      "channels": 2,
+      "rate": 3,
+      "rds_uecp": 0
+    },
+    {
+      "index": 7,
+      "type": "EAC3",
+      "language": "spa",
+      "audio_type": 3,
+      "channels": 1,
+      "rate": 3,
+      "rds_uecp": 0
+    },
+    {
+      "index": 8,
+      "type": "DVBSUB",
+      "language": "spa",
+      "composition_id": 1,
+      "ancillary_id": 1
+    },
+    {
+      "index": 1,
+      "type": "TEXTSUB",
+      "language": "spa"
+    },
+    {
+      "index": 2,
+      "type": "TEXTSUB",
+      "language": "qaa"
+    }
+  ],
+  "meta": [
+    "00000167640029ad843fffc21fffe10ffff087fff843fffc21fffe10ffffffffffffffff087fffffffffffffff2cc501e0113f780a1010101f00000303e80000c350e48000185660000e9a426b580cd04422cb0000000168ff7cb0"
+  ],
+  "meta_count": 1,
+  "subscriptionId": 1,
+  "packet_counts": {
+    "3": 142,
+    "5": 180,
+    "7": 179,
+    "6": 176,
+    "4": 222,
+    "8": 1
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "streams": [
+    {
+      "index": 1,
+      "type": "MPEG2VIDEO",
+      "width": 720,
+      "height": 576,
+      "duration": 3600,
+      "aspect_num": 16,
+      "aspect_den": 9
+    },
+    {
+      "index": 2,
+      "type": "MPEG2AUDIO",
+      "audio_type": 0,
+      "audio_version": 2,
+      "channels": 2,
+      "rate": 3,
+      "rds_uecp": 0
+    },
+    {
+      "index": 3,
+      "type": "MPEG2AUDIO",
+      "audio_type": 0,
+      "audio_version": 2,
+      "channels": 2,
+      "rate": 3,
+      "rds_uecp": 0
+    }
+  ],
+  "meta": [
+    "000001b32d0240330536e38210202020262c342c2c262c2c3434363a363634362c34363a3a363a4050404436443a363034443a4a444c506050464c3a443a4a445c60745c46464c708a8a70a71012111113141714141316141819191c1a191718151617181a1b1d1d221e1d1a1b191715161a1b1c1d222124211f1f1c1a1b1f20242326231e2021262928272b000001b5148200010000000001b828cb4a00"
+  ],
+  "meta_count": 1,
+  "subscriptionId": 1,
+  "packet_counts": {
+    "2": 360,
+    "3": 360,
+    "1": 180
+  }
+}

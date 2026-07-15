@@ -1,0 +1,125 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+# Least-privilege by default; the release job opts into `contents: write` explicitly.
+permissions:
+  contents: read
+
+env:
+  DOTNET_VERSION: "9.0.x"
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+
+jobs:
+  build:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      # The muxer acceptance tests verify the emitted MPEG-TS with ffprobe, so it must be present.
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Restore
+        run: dotnet restore
+
+      # TreatWarningsAsErrors + GenerateDocumentationFile are ON in the csproj, so this
+      # fails on any missing XML doc comment or any warning -- that is intentional.
+      - name: Build (Release)
+        run: dotnet build --configuration Release --no-restore
+
+      # Only run tests if a test project actually exists yet (it may land later).
+      - name: Test
+        shell: bash
+        run: |
+          if git ls-files '*Tests*.csproj' '*.Tests.csproj' | grep -q .; then
+            dotnet test --configuration Release --no-build --verbosity normal
+          else
+            echo "No test project found -- skipping test step."
+          fi
+
+  release:
+    name: Package & Release
+    needs: build
+    # Only build a release artifact for version tags (e.g. v1.0.0.0).
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # Full history so the manifest commit can be pushed back to the default branch.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      # jprm reads build.yaml, builds the csproj in Release, and emits a versioned zip
+      # containing the dll + a generated meta.json.
+      - name: Install jprm
+        run: python -m pip install --upgrade jprm
+
+      # The plugin version comes from the tag (v1.2.3.4 -> 1.2.3.4), so a release is cut
+      # just by pushing a tag; no file needs editing.
+      - name: Package with jprm
+        id: package
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          mkdir -p artifacts
+          zip_path="$(jprm --verbosity=debug plugin build . --version="${version}" --output=./artifacts)"
+          echo "Built: ${zip_path}"
+          echo "zip_path=${zip_path}" >> "$GITHUB_OUTPUT"
+          echo "zip_name=$(basename "${zip_path}")" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ steps.package.outputs.zip_path }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+
+      # Publish this version into manifest.json on main so Jellyfin clients that added the
+      # repository URL see the update. The zip is served from the GitHub Release asset above.
+      - name: Update repository manifest
+        shell: bash
+        env:
+          GIT_AUTHOR_NAME: "github-actions[bot]"
+          GIT_AUTHOR_EMAIL: "41898282+github-actions[bot]@users.noreply.github.com"
+          GIT_COMMITTER_NAME: "github-actions[bot]"
+          GIT_COMMITTER_EMAIL: "41898282+github-actions[bot]@users.noreply.github.com"
+        run: |
+          set -euo pipefail
+          dl_url="${{ github.server_url }}/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/${{ steps.package.outputs.zip_name }}"
+          git fetch origin main
+          git checkout main
+          [ -f manifest.json ] || jprm repo init .
+          jprm repo add --plugin-url "${dl_url}" . "${{ steps.package.outputs.zip_path }}"
+          git add manifest.json
+          if git diff --cached --quiet; then
+            echo "manifest.json unchanged"
+            exit 0
+          fi
+          git commit -m "Publish ${GITHUB_REF_NAME} to the plugin repository manifest [skip ci]"
+          git push origin HEAD:main

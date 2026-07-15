@@ -1,0 +1,25 @@
+{
+  "streams": [
+    {
+      "index": 1,
+      "type": "AAC",
+      "language": "cat",
+      "audio_type": 0,
+      "channels": 2,
+      "rate": 3,
+      "rds_uecp": 0
+    },
+    {
+      "index": 2,
+      "type": "PCR"
+    }
+  ],
+  "meta": [
+    "1190"
+  ],
+  "meta_count": 1,
+  "subscriptionId": 1,
+  "packet_counts": {
+    "1": 900
+  }
+}

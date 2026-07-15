@@ -1,0 +1,65 @@
+{
+  "streams": [
+    {
+      "index": 1,
+      "type": "H264",
+      "width": 1920,
+      "height": 1080,
+      "duration": 3600,
+      "aspect_num": 16,
+      "aspect_den": 9
+    },
+    {
+      "index": 3,
+      "type": "TELETEXT"
+    },
+    {
+      "index": 4,
+      "type": "MPEG2AUDIO",
+      "language": "spa",
+      "audio_type": 0,
+      "audio_version": 2,
+      "channels": 2,
+      "rate": 3,
+      "rds_uecp": 0
+    },
+    {
+      "index": 5,
+      "type": "MPEG2AUDIO",
+      "language": "qaa",
+      "audio_type": 0,
+      "audio_version": 2,
+      "channels": 2,
+      "rate": 3,
+      "rds_uecp": 0
+    },
+    {
+      "index": 6,
+      "type": "MPEG2AUDIO",
+      "language": "spa",
+      "audio_type": 3,
+      "audio_version": 2,
+      "channels": 1,
+      "rate": 3,
+      "rds_uecp": 0
+    },
+    {
+      "index": 2,
+      "type": "TEXTSUB",
+      "language": "spa"
+    }
+  ],
+  "meta": [
+    "00000167640029ac133140780447de03ea020203e0000003002000000652800000000168fa8f2c00000001685ea3cc0300"
+  ],
+  "meta_count": 1,
+  "subscriptionId": 1,
+  "packet_counts": {
+    "4": 195,
+    "6": 195,
+    "3": 108,
+    "5": 190,
+    "1": 210,
+    "2": 2
+  }
+}

@@ -1,0 +1,15 @@
+bin/
+obj/
+artifacts/
+*.user
+*.suo
+.vs/
+.idea/
+TestResults/
+*.ts.tmp
+tools/deploy.env
+*.secret
+.env
+
+# Local Claude Code / tooling settings
+.claude/
