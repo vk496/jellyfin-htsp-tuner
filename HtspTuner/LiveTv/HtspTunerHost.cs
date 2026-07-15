@@ -212,11 +212,12 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost
     private List<ChannelInfo> ChannelsFor(TunerHostInfo tuner, HtspClient client)
     {
         var opts = client.Options;
+        var key = StableKey(opts);
         return client.GetChannels()
             .OrderBy(c => c.Number == 0 ? int.MaxValue : c.Number)
             .Select(c => new ChannelInfo
             {
-                Id = Prefix + tuner.Id + "_" + c.Id.ToString(CultureInfo.InvariantCulture),
+                Id = Prefix + key + "_" + c.Id.ToString(CultureInfo.InvariantCulture),
                 TunerHostId = tuner.Id,
                 Name = c.Name,
                 Number = c.DisplayNumber,
@@ -226,14 +227,26 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost
             .ToList();
     }
 
+    // A stable per-server key so channel ids survive removing and re-adding a tuner. Jellyfin assigns a
+    // fresh TunerHostInfo.Id (GUID) every time a tuner is added, and the old scheme baked that into the
+    // channel id -- so each re-add produced a whole new set of channels and the old ones piled up as
+    // orphans. Deriving the key from the resolved host:port instead means the same Tvheadend always yields
+    // the same channel ids, while different servers stay distinct.
+    private static string StableKey(HtspClientOptions opts)
+    {
+        var bytes = System.Text.Encoding.UTF8.GetBytes(opts.Host + ":" + opts.Port.ToString(CultureInfo.InvariantCulture));
+        var hash = System.Security.Cryptography.SHA1.HashData(bytes);
+        return Convert.ToHexString(hash, 0, 6).ToLowerInvariant(); // 12 stable hex chars
+    }
+
     private (TunerHostInfo Tuner, long ChannelId) Resolve(string channelId)
     {
-        // channelId = "htsp_{tunerId}_{tvhChannelId}"
+        // channelId = "htsp_{serverKey}_{tvhChannelId}" (serverKey = StableKey of the host:port)
         var rest = channelId.StartsWith(Prefix, StringComparison.Ordinal) ? channelId[Prefix.Length..] : channelId;
         var split = rest.LastIndexOf('_');
-        var tunerId = split > 0 ? rest[..split] : string.Empty;
+        var serverKey = split > 0 ? rest[..split] : string.Empty;
         var tvhId = long.Parse(rest[(split + 1)..], CultureInfo.InvariantCulture);
-        var tuner = Tuners().FirstOrDefault(t => string.Equals(t.Id, tunerId, StringComparison.Ordinal))
+        var tuner = Tuners().FirstOrDefault(t => string.Equals(StableKey(OptionsFor(t)), serverKey, StringComparison.Ordinal))
                     ?? throw new InvalidOperationException($"No HTSP tuner owns channel {channelId}");
         return (tuner, tvhId);
     }

@@ -47,6 +47,13 @@ artifacts:
   - "HtspTuner.dll"
 
 changelog: >-
+  ### 1.0.0.5
+
+  - Stable channel ids: channels are now keyed by the Tvheadend server (host:port) instead of the
+    per-add tuner GUID, so removing and re-adding a tuner no longer multiplies channels. NOTE: this
+    is a one-time id change -- after updating, remove and re-add the HTSP tuner once to drop the old
+    duplicate channels.
+
   ### 1.0.0.4
 
   - Honour Tvheadend's subscriptionGrace when starting a channel, so slow-tuning muxes (e.g.
