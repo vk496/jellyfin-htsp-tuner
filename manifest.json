@@ -6,7 +6,16 @@
         "overview": "Native HTSP streaming from Tvheadend, remuxed locally to MPEG-TS.",
         "owner": "vk496",
         "category": "LiveTV",
+        "imageUrl": "https://raw.githubusercontent.com/vk496/jellyfin-htsp-tuner/main/logo.png",
         "versions": [
+            {
+                "version": "1.0.0.8",
+                "changelog": "- Show where a channel is tuned from -- network, satellite position and mux (e.g.\n  \"Hispasat (30W) . 12476H\") -- in Jellyfin's playback media info.",
+                "targetAbi": "10.11.0.0",
+                "sourceUrl": "https://github.com/vk496/jellyfin-htsp-tuner/releases/download/v1.0.0.8/htsp-tuner_1.0.0.8.zip",
+                "checksum": "d87d9427daf5646e90b137677b12e3f0",
+                "timestamp": "2026-07-15T19:57:45Z"
+            },
             {
                 "version": "1.0.0.7",
                 "changelog": "- Fetch channel icons from Tvheadend over HTSP (fileOpen/fileRead) and serve them from the plugin, so it no longer needs any HTTP access to Tvheadend. Removed the HTTP port/HTTPS/web-root settings.",
@@ -71,7 +80,6 @@
                 "checksum": "c29dbcd03d97ec518f5ad54504e1301c",
                 "timestamp": "2026-07-15T14:01:45Z"
             }
-        ],
-        "imageUrl": "https://raw.githubusercontent.com/vk496/jellyfin-htsp-tuner/main/logo.png"
+        ]
     }
 ]
