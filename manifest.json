@@ -9,7 +9,7 @@
         "versions": [
             {
                 "version": "1.0.0.7",
-                "changelog": "### 1.0.0.7\n- Channel icons are now fetched from Tvheadend over HTSP (its fileOpen/fileRead API) and served by\n  the plugin, so the plugin no longer needs any HTTP access to Tvheadend. Removed the now-unused\n  HTTP port / HTTPS / web-root settings and the dead HTTP streaming fallback.\n\n### 1.0.0.6\n- Fix live streams freezing on one frame: the plugin was building a brand-new HTSP connection\n  (with a full channel re-sync) on any momentary disconnect and with no locking, so callers\n  piled up dozens of connections that contended Tvheadend's tuners and stalled the stream. It\n  now reuses one connection per server (which reconnects itself).\n\n### 1.0.0.5\n- Stable channel ids: channels are now keyed by the Tvheadend server (host:port) instead of the\n  per-add tuner GUID, so removing and re-adding a tuner no longer multiplies channels. NOTE: this\n  is a one-time id change -- after updating, remove and re-add the HTSP tuner once to drop the old\n  duplicate channels.\n\n### 1.0.0.4\n- Honour Tvheadend's subscriptionGrace when starting a channel, so slow-tuning muxes (e.g.\n  satellite LNB lock) are no longer cut off by a fixed 15s timeout and get the time Tvheadend\n  asks for.\n\n### 1.0.0.3\n- Fix HEVC channels never starting (black screen) on direct-play clients: the muxer now sets\n  the MPEG-TS random_access_indicator on key-frame packets and data_alignment on video PES, so\n  a player can find where to begin decoding (critical for HEVC's CRA + leading pictures).\n\n### 1.0.0.2\n- Fix the plugin settings page: fields now load and persist (it referenced a controller\n  that did not exist, so it never initialised).\n\n- Tuner-only model: the plugin does nothing until you add an HTSP tuner device. Removed the\n  separate config-only \"integrated service\" and the unused \"Streaming mode\" setting.\n\n- Native HTSP streaming with local MPEG-TS remux; metadata from subscriptionStart enriched\n  by a one-time self-probe (interlacing, HDR/colour, bit depth, profile/level).\n\n- Multiple tuners, live EPG, radio, fast same-mux switching, stream sharing, recording via\n  Jellyfin's DVR, channel tags and tuner/signal statistics.",
+                "changelog": "- Fetch channel icons from Tvheadend over HTSP (fileOpen/fileRead) and serve them from the plugin, so it no longer needs any HTTP access to Tvheadend. Removed the HTTP port/HTTPS/web-root settings.",
                 "targetAbi": "10.11.0.0",
                 "sourceUrl": "https://github.com/vk496/jellyfin-htsp-tuner/releases/download/v1.0.0.7/htsp-tuner_1.0.0.7.zip",
                 "checksum": "42f6a7237117af93fe04e7869e027cc0",
@@ -17,7 +17,7 @@
             },
             {
                 "version": "1.0.0.6",
-                "changelog": "### 1.0.0.6\n- Fix live streams freezing on one frame: the plugin was building a brand-new HTSP connection\n  (with a full channel re-sync) on any momentary disconnect and with no locking, so callers\n  piled up dozens of connections that contended Tvheadend's tuners and stalled the stream. It\n  now reuses one connection per server (which reconnects itself).\n\n### 1.0.0.5\n- Stable channel ids: channels are now keyed by the Tvheadend server (host:port) instead of the\n  per-add tuner GUID, so removing and re-adding a tuner no longer multiplies channels. NOTE: this\n  is a one-time id change -- after updating, remove and re-add the HTSP tuner once to drop the old\n  duplicate channels.\n\n### 1.0.0.4\n- Honour Tvheadend's subscriptionGrace when starting a channel, so slow-tuning muxes (e.g.\n  satellite LNB lock) are no longer cut off by a fixed 15s timeout and get the time Tvheadend\n  asks for.\n\n### 1.0.0.3\n- Fix HEVC channels never starting (black screen) on direct-play clients: the muxer now sets\n  the MPEG-TS random_access_indicator on key-frame packets and data_alignment on video PES, so\n  a player can find where to begin decoding (critical for HEVC's CRA + leading pictures).\n\n### 1.0.0.2\n- Fix the plugin settings page: fields now load and persist (it referenced a controller\n  that did not exist, so it never initialised).\n\n- Tuner-only model: the plugin does nothing until you add an HTSP tuner device. Removed the\n  separate config-only \"integrated service\" and the unused \"Streaming mode\" setting.\n\n- Native HTSP streaming with local MPEG-TS remux; metadata from subscriptionStart enriched\n  by a one-time self-probe (interlacing, HDR/colour, bit depth, profile/level).\n\n- Multiple tuners, live EPG, radio, fast same-mux switching, stream sharing, recording via\n  Jellyfin's DVR, channel tags and tuner/signal statistics.",
+                "changelog": "- Fix live streams freezing on one frame: reuse a single HTSP connection per server (which reconnects itself) instead of building a new connection + full re-sync on every momentary disconnect.",
                 "targetAbi": "10.11.0.0",
                 "sourceUrl": "https://github.com/vk496/jellyfin-htsp-tuner/releases/download/v1.0.0.6/htsp-tuner_1.0.0.6.zip",
                 "checksum": "a24545a911cdee9cdb7c18c032554f59",
@@ -25,7 +25,7 @@
             },
             {
                 "version": "1.0.0.5",
-                "changelog": "### 1.0.0.5\n- Stable channel ids: channels are now keyed by the Tvheadend server (host:port) instead of the\n  per-add tuner GUID, so removing and re-adding a tuner no longer multiplies channels. NOTE: this\n  is a one-time id change -- after updating, remove and re-add the HTSP tuner once to drop the old\n  duplicate channels.\n\n### 1.0.0.4\n- Honour Tvheadend's subscriptionGrace when starting a channel, so slow-tuning muxes (e.g.\n  satellite LNB lock) are no longer cut off by a fixed 15s timeout and get the time Tvheadend\n  asks for.\n\n### 1.0.0.3\n- Fix HEVC channels never starting (black screen) on direct-play clients: the muxer now sets\n  the MPEG-TS random_access_indicator on key-frame packets and data_alignment on video PES, so\n  a player can find where to begin decoding (critical for HEVC's CRA + leading pictures).\n\n### 1.0.0.2\n- Fix the plugin settings page: fields now load and persist (it referenced a controller\n  that did not exist, so it never initialised).\n\n- Tuner-only model: the plugin does nothing until you add an HTSP tuner device. Removed the\n  separate config-only \"integrated service\" and the unused \"Streaming mode\" setting.\n\n- Native HTSP streaming with local MPEG-TS remux; metadata from subscriptionStart enriched\n  by a one-time self-probe (interlacing, HDR/colour, bit depth, profile/level).\n\n- Multiple tuners, live EPG, radio, fast same-mux switching, stream sharing, recording via\n  Jellyfin's DVR, channel tags and tuner/signal statistics.",
+                "changelog": "- Stable channel ids keyed by the Tvheadend server instead of the per-add tuner GUID, so removing and re-adding a tuner no longer multiplies channels. (One-time id change: re-add the tuner once to drop old duplicates.)",
                 "targetAbi": "10.11.0.0",
                 "sourceUrl": "https://github.com/vk496/jellyfin-htsp-tuner/releases/download/v1.0.0.5/htsp-tuner_1.0.0.5.zip",
                 "checksum": "d28e751ff276b9feebdb68c232771730",
@@ -33,7 +33,7 @@
             },
             {
                 "version": "1.0.0.4",
-                "changelog": "### 1.0.0.4\n- Honour Tvheadend's subscriptionGrace when starting a channel, so slow-tuning muxes (e.g.\n  satellite LNB lock) are no longer cut off by a fixed 15s timeout and get the time Tvheadend\n  asks for.\n\n### 1.0.0.3\n- Fix HEVC channels never starting (black screen) on direct-play clients: the muxer now sets\n  the MPEG-TS random_access_indicator on key-frame packets and data_alignment on video PES, so\n  a player can find where to begin decoding (critical for HEVC's CRA + leading pictures).\n\n### 1.0.0.2\n- Fix the plugin settings page: fields now load and persist (it referenced a controller\n  that did not exist, so it never initialised).\n\n- Tuner-only model: the plugin does nothing until you add an HTSP tuner device. Removed the\n  separate config-only \"integrated service\" and the unused \"Streaming mode\" setting.\n\n- Native HTSP streaming with local MPEG-TS remux; metadata from subscriptionStart enriched\n  by a one-time self-probe (interlacing, HDR/colour, bit depth, profile/level).\n\n- Multiple tuners, live EPG, radio, fast same-mux switching, stream sharing, recording via\n  Jellyfin's DVR, channel tags and tuner/signal statistics.",
+                "changelog": "- Honour Tvheadend's subscriptionGrace when starting a channel, so slow-tuning muxes (e.g. satellite LNB lock) are no longer cut off by a fixed 15s timeout.",
                 "targetAbi": "10.11.0.0",
                 "sourceUrl": "https://github.com/vk496/jellyfin-htsp-tuner/releases/download/v1.0.0.4/htsp-tuner_1.0.0.4.zip",
                 "checksum": "88ceacbf7306d89a11f37c5762a0b266",
@@ -41,7 +41,7 @@
             },
             {
                 "version": "1.0.0.3",
-                "changelog": "### 1.0.0.3\n- Fix HEVC channels never starting (black screen) on direct-play clients: the muxer now sets\n  the MPEG-TS random_access_indicator on key-frame packets and data_alignment on video PES, so\n  a player can find where to begin decoding (critical for HEVC's CRA + leading pictures).\n\n### 1.0.0.2\n- Fix the plugin settings page: fields now load and persist (it referenced a controller\n  that did not exist, so it never initialised).\n\n- Tuner-only model: the plugin does nothing until you add an HTSP tuner device. Removed the\n  separate config-only \"integrated service\" and the unused \"Streaming mode\" setting.\n\n- Native HTSP streaming with local MPEG-TS remux; metadata from subscriptionStart enriched\n  by a one-time self-probe (interlacing, HDR/colour, bit depth, profile/level).\n\n- Multiple tuners, live EPG, radio, fast same-mux switching, stream sharing, recording via\n  Jellyfin's DVR, channel tags and tuner/signal statistics.",
+                "changelog": "- Fix HEVC channels black-screening on direct-play clients: set the MPEG-TS random_access_indicator on key frames (and data_alignment on video PES) so a player can find where to start decoding.",
                 "targetAbi": "10.11.0.0",
                 "sourceUrl": "https://github.com/vk496/jellyfin-htsp-tuner/releases/download/v1.0.0.3/htsp-tuner_1.0.0.3.zip",
                 "checksum": "359ea3cefa4ba436d2abea9bea5fc660",
@@ -49,7 +49,7 @@
             },
             {
                 "version": "1.0.0.2",
-                "changelog": "### 1.0.0.2\n- Fix the plugin settings page: fields now load and persist (it referenced a controller\n  that did not exist, so it never initialised).\n\n- Tuner-only model: the plugin does nothing until you add an HTSP tuner device. Removed the\n  separate config-only \"integrated service\" and the unused \"Streaming mode\" setting.\n\n- Native HTSP streaming with local MPEG-TS remux; metadata from subscriptionStart enriched\n  by a one-time self-probe (interlacing, HDR/colour, bit depth, profile/level).\n\n- Multiple tuners, live EPG, radio, fast same-mux switching, stream sharing, recording via\n  Jellyfin's DVR, channel tags and tuner/signal statistics.",
+                "changelog": "- Tuner-only model: the plugin does nothing until you add an HTSP tuner device. Removed the config-only integrated service and the unused Streaming mode setting.",
                 "targetAbi": "10.11.0.0",
                 "sourceUrl": "https://github.com/vk496/jellyfin-htsp-tuner/releases/download/v1.0.0.2/htsp-tuner_1.0.0.2.zip",
                 "checksum": "255b63f0663a089073668813cd239c49",
@@ -57,7 +57,7 @@
             },
             {
                 "version": "1.0.0.1",
-                "changelog": "### 1.0.0.0\n- Initial release.\n- Native HTSP subscription streaming with local MPEG-TS remuxing (no HTTP passthrough).\n- Exact codec/resolution/language metadata from subscriptionStart; no ffprobe, no second\n  tuner subscription.\n\n- Fast same-multiplex channel switching and stream sharing.\n- Radio channels, live EPG via async metadata, DVR timers, autorec series rules, channel\n  tags and tuner/signal statistics.",
+                "changelog": "- Fix the plugin settings page: fields now load and persist (it referenced a controller that did not exist, so it never initialised).",
                 "targetAbi": "10.11.0.0",
                 "sourceUrl": "https://github.com/vk496/jellyfin-htsp-tuner/releases/download/v1.0.0.1/htsp-tuner_1.0.0.1.zip",
                 "checksum": "1224a404ae87d2c48b97ee3f5397689b",
@@ -65,7 +65,7 @@
             },
             {
                 "version": "1.0.0.0",
-                "changelog": "### 1.0.0.0\n- Initial release.\n- Native HTSP subscription streaming with local MPEG-TS remuxing (no HTTP passthrough).\n- Exact codec/resolution/language metadata from subscriptionStart; no ffprobe, no second\n  tuner subscription.\n\n- Fast same-multiplex channel switching and stream sharing.\n- Radio channels, live EPG via async metadata, DVR timers, autorec series rules, channel\n  tags and tuner/signal statistics.",
+                "changelog": "- Initial release: native HTSP Live TV & DVR for Jellyfin -- native subscription streaming with in-process MPEG-TS remux, EPG, subtitles, multi-audio, radio, channel tags.",
                 "targetAbi": "10.11.0.0",
                 "sourceUrl": "https://github.com/vk496/jellyfin-htsp-tuner/releases/download/v1.0.0.0/htsp-tuner_1.0.0.0.zip",
                 "checksum": "c29dbcd03d97ec518f5ad54504e1301c",
