@@ -47,6 +47,13 @@ artifacts:
   - "HtspTuner.dll"
 
 changelog: >-
+  ### 1.0.0.6
+
+  - Fix live streams freezing on one frame: the plugin was building a brand-new HTSP connection
+    (with a full channel re-sync) on any momentary disconnect and with no locking, so callers
+    piled up dozens of connections that contended Tvheadend's tuners and stalled the stream. It
+    now reuses one connection per server (which reconnects itself).
+
   ### 1.0.0.5
 
   - Stable channel ids: channels are now keyed by the Tvheadend server (host:port) instead of the

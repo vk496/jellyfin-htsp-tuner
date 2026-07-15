@@ -31,6 +31,7 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost
     private readonly IMediaEncoder _mediaEncoder;
     private readonly ILogger<HtspTunerHost> _logger;
     private readonly ConcurrentDictionary<string, HtspClient> _clients = new();
+    private readonly SemaphoreSlim _clientLock = new(1, 1);
 
     /// <summary>Initializes a new instance of the <see cref="HtspTunerHost"/> class.</summary>
     /// <param name="config">The configuration manager, used to read configured tuners.</param>
@@ -255,15 +256,43 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost
     {
         var opts = OptionsFor(tuner);
         var key = $"{opts.Host}:{opts.Port}:{opts.Username}";
-        if (_clients.TryGetValue(key, out var existing) && existing.IsConnected)
+
+        // Reuse the cached client. HtspConnection reconnects itself indefinitely, so a momentary
+        // disconnect is NOT a reason to build a whole new connection -- doing that (the old
+        // `&& existing.IsConnected` check, with no lock) let concurrent callers and every transient
+        // reconnect spawn fresh sockets and full re-syncs, which piled up connections, contended
+        // Tvheadend's tuners and stalled live streams. One client per server, created once.
+        if (_clients.TryGetValue(key, out var existing))
         {
             return existing;
         }
 
-        var client = new HtspClient(opts, _logger);
-        await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
-        _clients[key] = client;
-        return client;
+        await _clientLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (_clients.TryGetValue(key, out existing))
+            {
+                return existing;
+            }
+
+            var client = new HtspClient(opts, _logger);
+            try
+            {
+                await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                await client.DisposeAsync().ConfigureAwait(false);
+                throw;
+            }
+
+            _clients[key] = client;
+            return client;
+        }
+        finally
+        {
+            _clientLock.Release();
+        }
     }
 
     // Resolve a tuner's connection details.
