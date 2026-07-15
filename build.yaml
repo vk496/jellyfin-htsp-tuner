@@ -47,6 +47,12 @@ artifacts:
   - "HtspTuner.dll"
 
 changelog: >-
+  ### 1.0.0.3
+
+  - Fix HEVC channels never starting (black screen) on direct-play clients: the muxer now sets
+    the MPEG-TS random_access_indicator on key-frame packets and data_alignment on video PES, so
+    a player can find where to begin decoding (critical for HEVC's CRA + leading pictures).
+
   ### 1.0.0.2
 
   - Fix the plugin settings page: fields now load and persist (it referenced a controller

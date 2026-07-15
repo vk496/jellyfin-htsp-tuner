@@ -54,6 +54,49 @@ public class TsMuxerTests
             $"{name}: expected [{string.Join(",", expected)}] got [{string.Join(",", actual)}]");
     }
 
+    [Fact]
+    public void KeyFramePacket_SetsRandomAccessIndicator_ButPFrameDoesNot()
+    {
+        var start = new HtspSubscriptionStart
+        {
+            SubscriptionId = 1,
+            Streams = new List<HtspStream> { new() { Index = 1, Codec = HtspCodec.H264, RawType = "H264" } },
+        };
+
+        // A tuning-in player needs random_access_indicator to find where to start decoding.
+        Assert.True(HasRandomAccessIndicator(Mux(start, 'I')), "key frame must set random_access_indicator");
+        Assert.False(HasRandomAccessIndicator(Mux(start, 'P')), "non-key frame must not set it");
+    }
+
+    private static byte[] Mux(HtspSubscriptionStart start, char frameType)
+    {
+        var muxer = new TsMuxer(start);
+        var writer = new ArrayBufferWriter<byte>();
+        muxer.WritePacket(
+            new HtspMuxPacket { StreamIndex = 1, Payload = new byte[200], Pts = 90000, Dts = 90000, FrameType = frameType },
+            writer);
+        return writer.WrittenSpan.ToArray();
+    }
+
+    private static bool HasRandomAccessIndicator(byte[] ts)
+    {
+        for (var k = 0; k + 188 <= ts.Length; k += 188)
+        {
+            if (ts[k] != 0x47)
+            {
+                continue;
+            }
+
+            var afc = (ts[k + 3] >> 4) & 0x3;               // adaptation_field_control
+            if ((afc == 2 || afc == 3) && ts[k + 4] > 0 && (ts[k + 5] & 0x40) != 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static HtspSubscriptionStart LoadStart(string path)
     {
         using var doc = JsonDocument.Parse(File.ReadAllText(path));

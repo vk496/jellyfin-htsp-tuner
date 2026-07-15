@@ -118,7 +118,7 @@ internal sealed class TsMuxer
         var payload = s.Source.Codec == HtspCodec.Aac ? AddAdtsIfNeeded(s.Source, packet.Payload) : packet.Payload;
         var pes = BuildPes(s, payload, packet.Pts, packet.Dts);
         long? pcr = s.Pid == _pcrPid ? packet.Dts ?? packet.Pts : null;
-        EmitPes(output, s, pes, pcr);
+        EmitPes(output, s, pes, pcr, packet.IsKeyFrame);
         _sinceHeaders++;
     }
 
@@ -293,7 +293,9 @@ internal sealed class TsMuxer
 
         header[4] = (byte)(pesLen >> 8);
         header[5] = (byte)(pesLen & 0xFF);
-        header[6] = 0x80; // marker bits '10'
+        // marker bits '10', plus data_alignment_indicator for video: each muxpkt is one access unit and
+        // the PES starts on its boundary, so tell the decoder it can align on this PES.
+        header[6] = s.Source.IsVideo ? (byte)0x84 : (byte)0x80;
         header[7] = (byte)((hasPts ? 0x80 : 0) | (hasDts ? 0x40 : 0));
         header[8] = (byte)tsBytes;
 
@@ -323,7 +325,7 @@ internal sealed class TsMuxer
         b[4] = (byte)(((ts << 1) & 0xFE) | 0x01);
     }
 
-    private void EmitPes(IBufferWriter<byte> output, TsStreamInfo s, byte[] pes, long? pcrBase)
+    private void EmitPes(IBufferWriter<byte> output, TsStreamInfo s, byte[] pes, long? pcrBase, bool keyFrame)
     {
         var off = 0;
         var first = true;
@@ -338,7 +340,12 @@ internal sealed class TsMuxer
 
             var remaining = pes.Length - off;
             var wantPcr = first && pcrBase.HasValue;
-            var needAf = wantPcr || remaining < 184;
+            // random_access_indicator marks the packet that starts a key-frame access unit, so a player
+            // tuning into the live stream knows where it may begin decoding. Without it, some decoders --
+            // notably HEVC, where a CRA key frame is followed by undecodable RASL leading pictures -- never
+            // find a start point and sit on a black screen. H.264's clean IDR is more forgiving.
+            var wantRai = first && keyFrame;
+            var needAf = wantPcr || wantRai || remaining < 184;
 
             int payloadLen;
             if (!needAf)
@@ -355,7 +362,7 @@ internal sealed class TsMuxer
                 payloadLen = Math.Min(remaining, room);
                 var stuffing = room - payloadLen;
                 span[4] = (byte)(1 + pcrBytes + stuffing); // adaptation_field_length
-                span[5] = (byte)(wantPcr ? 0x10 : 0x00);   // PCR_flag
+                span[5] = (byte)((wantPcr ? 0x10 : 0x00) | (wantRai ? 0x40 : 0x00)); // PCR + random-access flags
                 var p = 6;
                 if (wantPcr)
                 {
