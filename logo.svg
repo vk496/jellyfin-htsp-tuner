@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#12B0E8"/>
+      <stop offset="1" stop-color="#5A2C82"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" rx="108" fill="url(#bg)"/>
+
+  <g fill="none" stroke="#ffffff" stroke-width="16" stroke-linecap="round">
+    <!-- broadcast waves radiating from the transmitter at the tower top (256,138) -->
+    <path d="M198 138 A 82 82 0 0 1 224 80"/>
+    <path d="M166 138 A 128 128 0 0 1 206 50"/>
+    <path d="M314 138 A 82 82 0 0 0 288 80"/>
+    <path d="M346 138 A 128 128 0 0 0 306 50"/>
+  </g>
+
+  <!-- transmitter tower: an A-frame with cross-braces and a transmitter dot on top -->
+  <g stroke="#ffffff" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M208 372 L256 156 L304 372"/>
+    <line x1="228" y1="272" x2="284" y2="272"/>
+    <line x1="219" y1="322" x2="293" y2="322"/>
+  </g>
+  <circle cx="256" cy="146" r="22" fill="#ffffff"/>
+
+  <!-- baseline, then a clear gap before the wordmark -->
+  <rect x="152" y="372" width="208" height="16" rx="8" fill="#ffffff"/>
+  <text x="256" y="472" text-anchor="middle" font-family="Arial, Helvetica, sans-serif"
+        font-size="56" font-weight="700" letter-spacing="12" fill="#ffffff">HTSP</text>
+</svg>

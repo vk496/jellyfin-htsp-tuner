@@ -71,6 +71,7 @@
                 "checksum": "c29dbcd03d97ec518f5ad54504e1301c",
                 "timestamp": "2026-07-15T14:01:45Z"
             }
-        ]
+        ],
+        "imageUrl": "https://raw.githubusercontent.com/vk496/jellyfin-htsp-tuner/main/logo.png"
     }
 ]

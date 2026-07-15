@@ -23,6 +23,7 @@ targetAbi: "10.11.0.0"
 framework: "net9.0"
 owner: "vk496"
 category: "LiveTV"
+imageUrl: "https://raw.githubusercontent.com/vk496/jellyfin-htsp-tuner/main/logo.png"
 
 overview: "Native HTSP streaming from Tvheadend, remuxed locally to MPEG-TS."
 
