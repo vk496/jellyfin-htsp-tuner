@@ -24,15 +24,6 @@ internal sealed record HtspClientOptions
     /// <summary>Gets the HTSP port. Tvheadend's default is 9982.</summary>
     public int Port { get; init; } = 9982;
 
-    /// <summary>Gets the HTTP port, used for channel icons, the mux-map seed and the HTTP fallback.</summary>
-    public int HttpPort { get; init; } = 9981;
-
-    /// <summary>Gets a value indicating whether HTTP requests use TLS.</summary>
-    public bool UseHttps { get; init; }
-
-    /// <summary>Gets the Tvheadend webroot, when it sits behind a reverse proxy.</summary>
-    public string WebRoot { get; init; } = string.Empty;
-
     /// <summary>Gets the user name. Empty is a valid, supported (anonymous) configuration.</summary>
     public string Username { get; init; } = string.Empty;
 

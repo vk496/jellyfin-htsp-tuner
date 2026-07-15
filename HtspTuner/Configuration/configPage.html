@@ -28,21 +28,6 @@
                     <div class="fieldDescription">Tvheadend's HTSP port. Default <code>9982</code>.</div>
                 </div>
                 <div class="inputContainer">
-                    <label class="inputLabel inputLabelUnfocused" for="HttpPort">HTTP port</label>
-                    <input is="emby-input" type="number" id="HttpPort" min="1" max="65535" required />
-                    <div class="fieldDescription">Tvheadend's HTTP port. Used for channel icons and the HTTP
-                        streaming fallback. Default <code>9981</code>.</div>
-                </div>
-                <div class="checkboxContainer checkboxContainer-withDescription">
-                    <label><input is="emby-checkbox" type="checkbox" id="UseHttps" /><span>Use HTTPS for HTTP requests</span></label>
-                    <div class="fieldDescription">Enable if Tvheadend's HTTP interface (icons / fallback) is served over TLS.</div>
-                </div>
-                <div class="inputContainer">
-                    <label class="inputLabel inputLabelUnfocused" for="WebRoot">Web root</label>
-                    <input is="emby-input" type="text" id="WebRoot" />
-                    <div class="fieldDescription">Only if Tvheadend sits behind a reverse proxy path.</div>
-                </div>
-                <div class="inputContainer">
                     <label class="inputLabel inputLabelUnfocused" for="Username">User name</label>
                     <input is="emby-input" type="text" id="Username" autocomplete="off" />
                     <div class="fieldDescription">Leave empty for an anonymous Tvheadend.</div>
@@ -120,10 +105,10 @@
     <script type="text/javascript">
         (function () {
             var pluginId = "48472334-959b-4838-a963-3a92e5a603d1";
-            var fields = ["Host", "HtspPort", "HttpPort", "WebRoot", "Username", "Password", "Profile",
+            var fields = ["Host", "HtspPort", "Username", "Password", "Profile",
                 "SubscriptionWeight", "MaxBufferMb", "StreamBaseUrl",
                 "PrePaddingSeconds", "PostPaddingSeconds", "DvrConfig", "AutoGuideRefreshMinutes"];
-            var checks = ["UseHttps", "ImportChannelTags", "HideRecordingsChannel"];
+            var checks = ["ImportChannelTags", "HideRecordingsChannel"];
 
             function load(cfg) {
                 fields.forEach(function (f) { document.getElementById(f).value = cfg[f] == null ? "" : cfg[f]; });
@@ -133,8 +118,6 @@
             function collect(cfg) {
                 cfg.Host = document.getElementById("Host").value;
                 cfg.HtspPort = parseInt(document.getElementById("HtspPort").value, 10);
-                cfg.HttpPort = parseInt(document.getElementById("HttpPort").value, 10);
-                cfg.WebRoot = document.getElementById("WebRoot").value;
                 cfg.Username = document.getElementById("Username").value;
                 cfg.Password = document.getElementById("Password").value;
                 cfg.Profile = document.getElementById("Profile").value;

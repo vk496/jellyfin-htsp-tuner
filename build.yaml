@@ -47,6 +47,12 @@ artifacts:
   - "HtspTuner.dll"
 
 changelog: >-
+  ### 1.0.0.7
+
+  - Channel icons are now fetched from Tvheadend over HTSP (its fileOpen/fileRead API) and served by
+    the plugin, so the plugin no longer needs any HTTP access to Tvheadend. Removed the now-unused
+    HTTP port / HTTPS / web-root settings and the dead HTTP streaming fallback.
+
   ### 1.0.0.6
 
   - Fix live streams freezing on one frame: the plugin was building a brand-new HTSP connection

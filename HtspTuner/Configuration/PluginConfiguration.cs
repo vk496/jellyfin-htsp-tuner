@@ -13,15 +13,6 @@ public class PluginConfiguration : BasePluginConfiguration
     /// <summary>Gets or sets the HTSP port.</summary>
     public int HtspPort { get; set; } = 9982;
 
-    /// <summary>Gets or sets the HTTP port, used for channel icons and the HTTP fallback.</summary>
-    public int HttpPort { get; set; } = 9981;
-
-    /// <summary>Gets or sets a value indicating whether HTTP requests use TLS.</summary>
-    public bool UseHttps { get; set; }
-
-    /// <summary>Gets or sets the Tvheadend webroot, when it sits behind a reverse proxy.</summary>
-    public string WebRoot { get; set; } = string.Empty;
-
     /// <summary>Gets or sets the user name. Empty is valid: Tvheadend may allow anonymous access.</summary>
     public string Username { get; set; } = string.Empty;
 

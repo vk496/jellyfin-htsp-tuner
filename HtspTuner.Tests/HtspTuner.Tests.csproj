@@ -16,8 +16,10 @@
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
     <!-- The plugin excludes the Jellyfin runtime assemblies (the host supplies them); tests that
-         construct real Jellyfin types (e.g. MediaStream) need MediaBrowser.Model.dll in bin/. -->
+         touch real Jellyfin types (MediaStream, or HtspTunerHost's ITunerHost base) need the
+         MediaBrowser.Model/Controller assemblies in bin/. -->
     <PackageReference Include="Jellyfin.Model" Version="10.11.11" />
+    <PackageReference Include="Jellyfin.Controller" Version="10.11.11" />
   </ItemGroup>
 
   <ItemGroup>

@@ -31,6 +31,7 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost
     private readonly IMediaEncoder _mediaEncoder;
     private readonly ILogger<HtspTunerHost> _logger;
     private readonly ConcurrentDictionary<string, HtspClient> _clients = new();
+    private readonly ConcurrentDictionary<string, (byte[] Data, string ContentType)> _iconCache = new();
     private readonly SemaphoreSlim _clientLock = new(1, 1);
 
     /// <summary>Initializes a new instance of the <see cref="HtspTunerHost"/> class.</summary>
@@ -212,28 +213,109 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost
 
     private List<ChannelInfo> ChannelsFor(TunerHostInfo tuner, HtspClient client)
     {
-        var opts = client.Options;
-        var key = StableKey(opts);
+        var key = StableKey(client.Options);
+        var baseUrl = LocalBaseUrl();
         return client.GetChannels()
             .OrderBy(c => c.Number == 0 ? int.MaxValue : c.Number)
-            .Select(c => new ChannelInfo
+            .Select(c =>
             {
-                Id = Prefix + key + "_" + c.Id.ToString(CultureInfo.InvariantCulture),
-                TunerHostId = tuner.Id,
-                Name = c.Name,
-                Number = c.DisplayNumber,
-                ImageUrl = ResolveIcon(opts, c.Icon),
-                ChannelType = c.IsRadio ? ChannelType.Radio : ChannelType.TV,
+                var channelId = Prefix + key + "_" + c.Id.ToString(CultureInfo.InvariantCulture);
+                return new ChannelInfo
+                {
+                    Id = channelId,
+                    TunerHostId = tuner.Id,
+                    Name = c.Name,
+                    Number = c.DisplayNumber,
+                    ImageUrl = IconUrl(c.Icon, channelId, baseUrl),
+                    ChannelType = c.IsRadio ? ChannelType.Radio : ChannelType.TV,
+                };
             })
             .ToList();
     }
+
+    // External logo URLs are used as-is; Tvheadend's own icons (imagecache/N paths) are served by our
+    // /HtspTuner/Icon endpoint, which fetches them over HTSP -- so no HTTP access to Tvheadend is needed.
+    private static string? IconUrl(string? icon, string channelId, string baseUrl)
+    {
+        if (string.IsNullOrEmpty(icon))
+        {
+            return null;
+        }
+
+        return icon.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            ? icon
+            : baseUrl + "/HtspTuner/Icon/" + channelId;
+    }
+
+    // Loopback base for the icon endpoint. Jellyfin fetches channel images server-side, so 127.0.0.1 is
+    // always reachable and dodges auto-detecting a wrong NIC on a multi-homed host.
+    private string LocalBaseUrl()
+    {
+        try
+        {
+            var uri = new Uri(_appHost.GetApiUrlForLocalAccess());
+            return $"{uri.Scheme}://127.0.0.1:{uri.Port}";
+        }
+        catch (UriFormatException)
+        {
+            return _appHost.GetApiUrlForLocalAccess().TrimEnd('/');
+        }
+    }
+
+    /// <summary>Fetches a channel's icon from Tvheadend over HTSP (cached per channel).</summary>
+    /// <param name="channelId">The prefixed channel id.</param>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>The icon bytes and content type, or null if the channel has no fetchable icon.</returns>
+    public async Task<(byte[] Data, string ContentType)?> GetChannelIconAsync(
+        string channelId, CancellationToken cancellationToken)
+    {
+        if (_iconCache.TryGetValue(channelId, out var cached))
+        {
+            return cached;
+        }
+
+        try
+        {
+            var (tuner, tvhId) = Resolve(channelId);
+            var client = await ClientForAsync(tuner, cancellationToken).ConfigureAwait(false);
+            var icon = client.GetChannels().FirstOrDefault(c => c.Id == tvhId)?.Icon;
+            if (icon is not { Length: > 0 } || icon.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            {
+                return null; // no icon, or an external URL Jellyfin fetches directly
+            }
+
+            var data = await client.ReadFileAsync(icon, cancellationToken).ConfigureAwait(false);
+            if (data.Length == 0)
+            {
+                return null;
+            }
+
+            var result = (data, ContentTypeOf(data));
+            _iconCache[channelId] = result;
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Could not fetch icon for channel {Channel} over HTSP", channelId);
+            return null;
+        }
+    }
+
+    private static string ContentTypeOf(byte[] d) => d switch
+    {
+        [0x89, 0x50, ..] => "image/png",
+        [0xFF, 0xD8, ..] => "image/jpeg",
+        [0x47, 0x49, 0x46, ..] => "image/gif",
+        [0x3C, ..] => "image/svg+xml",
+        _ => "image/png",
+    };
 
     // A stable per-server key so channel ids survive removing and re-adding a tuner. Jellyfin assigns a
     // fresh TunerHostInfo.Id (GUID) every time a tuner is added, and the old scheme baked that into the
     // channel id -- so each re-add produced a whole new set of channels and the old ones piled up as
     // orphans. Deriving the key from the resolved host:port instead means the same Tvheadend always yields
     // the same channel ids, while different servers stay distinct.
-    private static string StableKey(HtspClientOptions opts)
+    internal static string StableKey(HtspClientOptions opts)
     {
         var bytes = System.Text.Encoding.UTF8.GetBytes(opts.Host + ":" + opts.Port.ToString(CultureInfo.InvariantCulture));
         var hash = System.Security.Cryptography.SHA1.HashData(bytes);
@@ -342,31 +424,10 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost
         {
             Host = host,
             Port = port,
-            HttpPort = cfg.HttpPort,
-            UseHttps = cfg.UseHttps,
-            WebRoot = cfg.WebRoot,
             Username = user,
             Password = pass,
             Profile = cfg.Profile,
             SubscriptionWeight = cfg.SubscriptionWeight,
         };
-    }
-
-    private static string? ResolveIcon(HtspClientOptions opts, string? icon)
-    {
-        if (string.IsNullOrEmpty(icon))
-        {
-            return null;
-        }
-
-        if (icon.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-        {
-            return icon;
-        }
-
-        var scheme = opts.UseHttps ? "https" : "http";
-        var root = opts.WebRoot.Trim('/');
-        var prefix = root.Length > 0 ? "/" + root : string.Empty;
-        return $"{scheme}://{opts.Host}:{opts.HttpPort}{prefix}/{icon.TrimStart('/')}";
     }
 }

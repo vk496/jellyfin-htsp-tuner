@@ -176,6 +176,59 @@ internal sealed class HtspClient : IAsyncDisposable
     public Task<HtspMessage> SendAsync(HtspMessage message, CancellationToken cancellationToken)
         => _connection.SendAsync(message, cancellationToken);
 
+    /// <summary>
+    /// Reads a server-side file over HTSP (<c>fileOpen</c>/<c>fileRead</c>/<c>fileClose</c>). Used for
+    /// channel icons (<c>imagecache/N</c> paths) so the plugin never needs Tvheadend's HTTP interface.
+    /// </summary>
+    /// <param name="path">The Tvheadend file path, e.g. <c>imagecache/123</c>.</param>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>The file bytes.</returns>
+    public async Task<byte[]> ReadFileAsync(string path, CancellationToken cancellationToken)
+    {
+        var open = await SendAsync(
+            new HtspMessage().Add("method", "fileOpen").Add("file", path), cancellationToken).ConfigureAwait(false);
+        var id = open.GetInt("id");
+        var size = open.GetIntOrNull("size") ?? 0;
+        try
+        {
+            using var buffer = new MemoryStream();
+            var remaining = size > 0 ? size : 4L * 1024 * 1024; // cap when the server does not report a size
+            while (remaining > 0)
+            {
+                var want = (int)Math.Min(remaining, 256 * 1024);
+                var reply = await SendAsync(
+                    new HtspMessage().Add("method", "fileRead").Add("id", id).Add("size", (long)want),
+                    cancellationToken).ConfigureAwait(false);
+                var chunk = reply.GetBin("data");
+                if (chunk is not { Length: > 0 })
+                {
+                    break;
+                }
+
+                buffer.Write(chunk, 0, chunk.Length);
+                remaining -= chunk.Length;
+                if (chunk.Length < want)
+                {
+                    break; // short read = EOF
+                }
+            }
+
+            return buffer.ToArray();
+        }
+        finally
+        {
+            try
+            {
+                await SendAsync(new HtspMessage().Add("method", "fileClose").Add("id", id), cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+                // best effort; the server drops the handle when the connection closes anyway
+            }
+        }
+    }
+
     /// <inheritdoc/>
     public async ValueTask DisposeAsync()
     {
