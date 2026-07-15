@@ -8,6 +8,14 @@
         "category": "LiveTV",
         "versions": [
             {
+                "version": "1.0.0.1",
+                "changelog": "### 1.0.0.0\n- Initial release.\n- Native HTSP subscription streaming with local MPEG-TS remuxing (no HTTP passthrough).\n- Exact codec/resolution/language metadata from subscriptionStart; no ffprobe, no second\n  tuner subscription.\n\n- Fast same-multiplex channel switching and stream sharing.\n- Radio channels, live EPG via async metadata, DVR timers, autorec series rules, channel\n  tags and tuner/signal statistics.",
+                "targetAbi": "10.11.0.0",
+                "sourceUrl": "https://github.com/vk496/jellyfin-htsp-tuner/releases/download/v1.0.0.1/htsp-tuner_1.0.0.1.zip",
+                "checksum": "1224a404ae87d2c48b97ee3f5397689b",
+                "timestamp": "2026-07-15T14:26:36Z"
+            },
+            {
                 "version": "1.0.0.0",
                 "changelog": "### 1.0.0.0\n- Initial release.\n- Native HTSP subscription streaming with local MPEG-TS remuxing (no HTTP passthrough).\n- Exact codec/resolution/language metadata from subscriptionStart; no ffprobe, no second\n  tuner subscription.\n\n- Fast same-multiplex channel switching and stream sharing.\n- Radio channels, live EPG via async metadata, DVR timers, autorec series rules, channel\n  tags and tuner/signal statistics.",
                 "targetAbi": "10.11.0.0",
