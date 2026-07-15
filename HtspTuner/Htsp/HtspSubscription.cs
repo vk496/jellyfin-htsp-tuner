@@ -420,6 +420,8 @@ internal sealed class HtspSubscription : IAsyncDisposable
                 Adapter = si.GetString("adapter"),
                 Mux = si.GetString("mux"),
                 Network = si.GetString("network"),
+                NetworkType = si.GetString("network_type"),
+                Satpos = si.GetString("satpos"),
                 Provider = si.GetString("provider"),
                 Service = si.GetString("service"),
             };

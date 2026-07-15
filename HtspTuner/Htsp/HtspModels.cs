@@ -142,6 +142,12 @@ internal sealed record HtspSourceInfo
     /// <summary>Gets the network name.</summary>
     public string? Network { get; init; }
 
+    /// <summary>Gets the network type, e.g. <c>DVB-S</c>, <c>DVB-T</c>, <c>IPTV</c>.</summary>
+    public string? NetworkType { get; init; }
+
+    /// <summary>Gets the satellite position for DVB-S muxes, e.g. <c>30W</c>.</summary>
+    public string? Satpos { get; init; }
+
     /// <summary>Gets the service provider.</summary>
     public string? Provider { get; init; }
 

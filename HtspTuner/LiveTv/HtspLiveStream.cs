@@ -65,9 +65,18 @@ internal sealed class HtspLiveStream : ILiveStream, IDirectStreamProvider
 
         _streams = MediaStreamBuilder.Build(_muxer.Streams);
 
+        var source = SourceDescription(subscription.Start!.SourceInfo);
+        if (source is not null && _streams.Find(s => s.Type == MediaStreamType.Video) is { } videoStream)
+        {
+            videoStream.Title = source;
+        }
+
         MediaSource = new MediaSourceInfo
         {
             Id = UniqueId,
+            // Where the subscription is tuned from (network / mux / satellite position), so it shows in
+            // Jellyfin's playback media-info. Also stamped on the video stream title below.
+            Name = source,
             // Self-served so consumption goes through GetStream()+ProgressiveFileStream (which polls at the
             // live edge) rather than a File path ffmpeg would treat as finite and stop at EOF.
             Protocol = MediaProtocol.Http,
@@ -130,6 +139,25 @@ internal sealed class HtspLiveStream : ILiveStream, IDirectStreamProvider
 
     /// <summary>Gets the underlying subscription, for the status dashboard.</summary>
     public HtspSubscription Subscription => _subscription;
+
+    // A human-readable "where is this tuned from" line for Jellyfin's media info: the network (with the
+    // satellite position when present) and the mux, e.g. "Abertis · MUX 12476H" or "Hispasat (30W) · 12476H".
+    private static string? SourceDescription(HtspSourceInfo? si)
+    {
+        if (si is null)
+        {
+            return null;
+        }
+
+        var network = si.Network;
+        if (!string.IsNullOrEmpty(si.Satpos))
+        {
+            network = string.IsNullOrEmpty(network) ? si.Satpos : $"{network} ({si.Satpos})";
+        }
+
+        var text = string.Join(" · ", new[] { network, si.Mux }.Where(p => !string.IsNullOrEmpty(p)));
+        return text.Length > 0 ? text : null;
+    }
 
     // The base URL Jellyfin's own ffmpeg uses to read this stream back. It reads its OWN endpoint, so
     // loopback is always correct and dodges Jellyfin auto-detecting a wrong NIC (the source of unplayable

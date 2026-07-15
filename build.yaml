@@ -46,49 +46,7 @@ description: >-
 artifacts:
   - "HtspTuner.dll"
 
+# Only the current version's notes -- each release carries just its own changelog.
 changelog: >-
-  ### 1.0.0.7
-
-  - Channel icons are now fetched from Tvheadend over HTSP (its fileOpen/fileRead API) and served by
-    the plugin, so the plugin no longer needs any HTTP access to Tvheadend. Removed the now-unused
-    HTTP port / HTTPS / web-root settings and the dead HTTP streaming fallback.
-
-  ### 1.0.0.6
-
-  - Fix live streams freezing on one frame: the plugin was building a brand-new HTSP connection
-    (with a full channel re-sync) on any momentary disconnect and with no locking, so callers
-    piled up dozens of connections that contended Tvheadend's tuners and stalled the stream. It
-    now reuses one connection per server (which reconnects itself).
-
-  ### 1.0.0.5
-
-  - Stable channel ids: channels are now keyed by the Tvheadend server (host:port) instead of the
-    per-add tuner GUID, so removing and re-adding a tuner no longer multiplies channels. NOTE: this
-    is a one-time id change -- after updating, remove and re-add the HTSP tuner once to drop the old
-    duplicate channels.
-
-  ### 1.0.0.4
-
-  - Honour Tvheadend's subscriptionGrace when starting a channel, so slow-tuning muxes (e.g.
-    satellite LNB lock) are no longer cut off by a fixed 15s timeout and get the time Tvheadend
-    asks for.
-
-  ### 1.0.0.3
-
-  - Fix HEVC channels never starting (black screen) on direct-play clients: the muxer now sets
-    the MPEG-TS random_access_indicator on key-frame packets and data_alignment on video PES, so
-    a player can find where to begin decoding (critical for HEVC's CRA + leading pictures).
-
-  ### 1.0.0.2
-
-  - Fix the plugin settings page: fields now load and persist (it referenced a controller
-    that did not exist, so it never initialised).
-
-  - Tuner-only model: the plugin does nothing until you add an HTSP tuner device. Removed the
-    separate config-only "integrated service" and the unused "Streaming mode" setting.
-
-  - Native HTSP streaming with local MPEG-TS remux; metadata from subscriptionStart enriched
-    by a one-time self-probe (interlacing, HDR/colour, bit depth, profile/level).
-
-  - Multiple tuners, live EPG, radio, fast same-mux switching, stream sharing, recording via
-    Jellyfin's DVR, channel tags and tuner/signal statistics.
+  - Show where a channel is tuned from -- network, satellite position and mux (e.g.
+    "Hispasat (30W) . 12476H") -- in Jellyfin's playback media info.
