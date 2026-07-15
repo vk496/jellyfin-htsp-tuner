@@ -1,0 +1,20 @@
+[
+    {
+        "guid": "48472334-959b-4838-a963-3a92e5a603d1",
+        "name": "HTSP Tuner",
+        "description": "Live TV and DVR for Jellyfin backed by Tvheadend over its native HTSP protocol. Unlike the official Tvheadend plugin -- which speaks HTSP only for metadata and then pulls the actual video over plain HTTP -- this plugin subscribes to the HTSP stream directly and remuxes the elementary streams into MPEG-TS inside Jellyfin. Codec, resolution, language and channel layout come straight from the HTSP subscriptionStart event; a short, one-time probe of the plugin's own muxed output then fills in the fields HTSP cannot carry -- interlacing, HDR/colour, bit depth, profile and level -- so Jellyfin makes correct direct-play, deinterlace and transcode decisions. All of this happens without opening a second tuner subscription. Supports fast same-multiplex channel switching, radio channels, live EPG pushed over async metadata, Tvheadend DVR timers and autorec series rules, channel tags, stream sharing between clients, and tuner/signal statistics.",
+        "overview": "Native HTSP streaming from Tvheadend, remuxed locally to MPEG-TS.",
+        "owner": "vk496",
+        "category": "LiveTV",
+        "versions": [
+            {
+                "version": "1.0.0.0",
+                "changelog": "### 1.0.0.0\n- Initial release.\n- Native HTSP subscription streaming with local MPEG-TS remuxing (no HTTP passthrough).\n- Exact codec/resolution/language metadata from subscriptionStart; no ffprobe, no second\n  tuner subscription.\n\n- Fast same-multiplex channel switching and stream sharing.\n- Radio channels, live EPG via async metadata, DVR timers, autorec series rules, channel\n  tags and tuner/signal statistics.",
+                "targetAbi": "10.11.0.0",
+                "sourceUrl": "https://github.com/vk496/jellyfin-htsp-tuner/releases/download/v1.0.0.0/htsp-tuner_1.0.0.0.zip",
+                "checksum": "c29dbcd03d97ec518f5ad54504e1301c",
+                "timestamp": "2026-07-15T14:01:45Z"
+            }
+        ]
+    }
+]
