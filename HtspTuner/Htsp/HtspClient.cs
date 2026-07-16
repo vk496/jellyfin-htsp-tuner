@@ -21,13 +21,10 @@ internal sealed class HtspClient : IAsyncDisposable
 
     // Events indexed by channel so a guide query is O(events-on-that-channel), not O(all 68k events).
     private readonly ConcurrentDictionary<long, ConcurrentDictionary<long, HtspEvent>> _eventsByChannel = new();
-    private readonly ConcurrentDictionary<long, HtspDvrEntry> _dvr = new();
-    private readonly ConcurrentDictionary<string, HtspAutorecEntry> _autorec = new();
     private readonly ConcurrentDictionary<int, HtspSubscription> _subscriptions = new();
 
     private readonly Debounce _channelsChanged;
     private readonly Debounce _epgChanged;
-    private readonly Debounce _recordingsChanged;
 
     private TaskCompletionSource _sync = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private int _nextSubscriptionId;
@@ -45,7 +42,6 @@ internal sealed class HtspClient : IAsyncDisposable
         _connection.Reconnected += OnReconnected;
         _channelsChanged = new Debounce(TimeSpan.FromSeconds(5), () => ChannelsChanged?.Invoke());
         _epgChanged = new Debounce(TimeSpan.FromSeconds(5), () => EpgChanged?.Invoke());
-        _recordingsChanged = new Debounce(TimeSpan.FromSeconds(5), () => RecordingsChanged?.Invoke());
     }
 
     /// <summary>Raised, debounced, when channels or tags change after the initial sync.</summary>
@@ -53,9 +49,6 @@ internal sealed class HtspClient : IAsyncDisposable
 
     /// <summary>Raised, debounced, when EPG events change after the initial sync.</summary>
     public event Action? EpgChanged;
-
-    /// <summary>Raised, debounced, when recordings or timers change after the initial sync.</summary>
-    public event Action? RecordingsChanged;
 
     /// <summary>Gets a value indicating whether the connection is up and authenticated.</summary>
     public bool IsConnected => _connection.IsConnected;
@@ -108,14 +101,6 @@ internal sealed class HtspClient : IAsyncDisposable
             ? events.Values.Where(e => e.Stop > from && e.Start < to).OrderBy(e => e.Start).ToList()
             : Array.Empty<HtspEvent>();
 
-    /// <summary>Gets a snapshot of the cached recordings and timers.</summary>
-    /// <returns>The DVR entries.</returns>
-    public IReadOnlyList<HtspDvrEntry> GetDvrEntries() => _dvr.Values.ToList();
-
-    /// <summary>Gets a snapshot of the cached autorec (series) rules.</summary>
-    /// <returns>The autorec rules.</returns>
-    public IReadOnlyList<HtspAutorecEntry> GetAutorecs() => _autorec.Values.ToList();
-
     /// <summary>Looks up a cached channel.</summary>
     /// <param name="id">The channel id.</param>
     /// <returns>The channel, or null.</returns>
@@ -155,18 +140,6 @@ internal sealed class HtspClient : IAsyncDisposable
     {
         _subscriptions.TryRemove(sub.Id, out _);
         await sub.StopAsync().ConfigureAwait(false);
-    }
-
-    /// <summary>Requests an HTTP streaming ticket for a channel (used by the HTTP fallback).</summary>
-    /// <param name="channelId">The channel id.</param>
-    /// <param name="cancellationToken">A cancellation token.</param>
-    /// <returns>The ticket path and token.</returns>
-    public async Task<HtspTicket> GetTicketAsync(long channelId, CancellationToken cancellationToken)
-    {
-        var reply = await _connection.SendAsync(
-            new HtspMessage().Add("method", "getTicket").Add("channelId", channelId),
-            cancellationToken).ConfigureAwait(false);
-        return new HtspTicket(reply.GetString("path") ?? string.Empty, reply.GetString("ticket") ?? string.Empty);
     }
 
     /// <summary>Sends an arbitrary request, e.g. a DVR mutator, and returns the reply.</summary>
@@ -234,7 +207,6 @@ internal sealed class HtspClient : IAsyncDisposable
     {
         _channelsChanged.Dispose();
         _epgChanged.Dispose();
-        _recordingsChanged.Dispose();
         foreach (var sub in _subscriptions.Values)
         {
             await sub.DisposeAsync().ConfigureAwait(false);
@@ -268,8 +240,6 @@ internal sealed class HtspClient : IAsyncDisposable
         _tags.Clear();
         _events.Clear();
         _eventsByChannel.Clear();
-        _dvr.Clear();
-        _autorec.Clear();
         _synced = false;
         _sync = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _ = EnableMetadataAsync(CancellationToken.None);
@@ -321,38 +291,12 @@ internal sealed class HtspClient : IAsyncDisposable
 
                 Signal(_epgChanged);
                 break;
-            case "dvrEntryAdd":
-            case "dvrEntryUpdate":
-                _dvr[m.GetInt("id")] = ParseDvr(m);
-                Signal(_recordingsChanged);
-                break;
-            case "dvrEntryDelete":
-                _dvr.TryRemove(m.GetInt("id"), out _);
-                Signal(_recordingsChanged);
-                break;
-            case "autorecEntryAdd":
-            case "autorecEntryUpdate":
-                if (m.GetString("id") is { } aid)
-                {
-                    _autorec[aid] = ParseAutorec(m);
-                    Signal(_recordingsChanged);
-                }
-
-                break;
-            case "autorecEntryDelete":
-                if (m.GetString("id") is { } did)
-                {
-                    _autorec.TryRemove(did, out _);
-                    Signal(_recordingsChanged);
-                }
-
-                break;
             case "initialSyncCompleted":
                 _synced = true;
                 _sync.TrySetResult();
                 _logger.LogInformation(
-                    "HTSP initial sync: {Channels} channels, {Tags} tags, {Events} events, {Dvr} recordings",
-                    _channels.Count, _tags.Count, _events.Count, _dvr.Count);
+                    "HTSP initial sync: {Channels} channels, {Tags} tags, {Events} events",
+                    _channels.Count, _tags.Count, _events.Count);
                 break;
             default:
                 break;
@@ -413,52 +357,6 @@ internal sealed class HtspClient : IAsyncDisposable
         Image = m.GetString("image"),
         CopyrightYear = ToIntOrNull(m.GetIntOrNull("copyrightYear")),
     };
-
-    private static HtspDvrEntry ParseDvr(HtspMessage m) => new()
-    {
-        Id = m.GetInt("id"),
-        ChannelId = m.GetInt("channel"),
-        Start = FromUnix(m.GetInt("start")),
-        Stop = FromUnix(m.GetInt("stop")),
-        PrePaddingSeconds = (int)(m.GetInt("startExtra") * 60),   // Tvheadend stores padding in minutes
-        PostPaddingSeconds = (int)(m.GetInt("stopExtra") * 60),
-        Title = FirstLang(m, "title"),
-        Subtitle = FirstLang(m, "subtitle"),
-        Description = FirstLang(m, "description"),
-        State = m.GetString("state"),
-        Error = m.GetString("error"),
-        AutorecId = m.GetString("autorecId"),
-        EventId = m.GetIntOrNull("eventId"),
-        ContentType = (int)m.GetInt("contentType"),
-        FileSize = m.GetIntOrNull("dataSize"),
-        Image = m.GetString("image"),
-    };
-
-    private static HtspAutorecEntry ParseAutorec(HtspMessage m) => new()
-    {
-        Id = m.GetString("id") ?? string.Empty,
-        Title = m.GetString("title"),
-        ChannelId = m.GetInt("channel"),
-        Enabled = m.GetBool("enabled"),
-        StartMinutes = ToIntOrNull(m.GetIntOrNull("start")),
-        StartWindowMinutes = ToIntOrNull(m.GetIntOrNull("startWindow")),
-        DaysOfWeek = (int)m.GetInt("daysOfWeek", 0x7F),
-        PrePaddingSeconds = (int)(m.GetInt("startExtra") * 60),
-        PostPaddingSeconds = (int)(m.GetInt("stopExtra") * 60),
-        Priority = (int)m.GetInt("priority"),
-        SeriesLinkId = m.GetString("serieslinkUri"),
-    };
-
-    // Tvheadend may send some text fields as a language-keyed map when configured multilingual.
-    private static string? FirstLang(HtspMessage m, string field)
-    {
-        if (m.GetString(field) is { } s)
-        {
-            return s;
-        }
-
-        return m.GetMap(field)?.Fields.Select(f => f.Value as string).FirstOrDefault(v => v is not null);
-    }
 
     private static int? ToIntOrNull(long? v) => v is { } x and > 0 ? (int)x : null;
 

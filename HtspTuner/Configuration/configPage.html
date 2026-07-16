@@ -62,7 +62,7 @@
                 </div>
 
                 <div class="verticalSection">
-                    <h2 class="sectionTitle">Guide &amp; recordings</h2>
+                    <h2 class="sectionTitle">Guide</h2>
                 </div>
                 <div class="checkboxContainer checkboxContainer-withDescription">
                     <label><input is="emby-checkbox" type="checkbox" id="ImportChannelTags" /><span>Import Tvheadend channel tags as genres</span></label>
@@ -70,23 +70,7 @@
                 <div class="inputContainer">
                     <label class="inputLabel inputLabelUnfocused" for="AutoGuideRefreshMinutes">Auto guide refresh (min)</label>
                     <input is="emby-input" type="number" id="AutoGuideRefreshMinutes" min="0" max="1440" />
-                    <div class="fieldDescription">EPG is streamed live over HTSP into an indexed cache, so a refresh is cheap. Refresh Jellyfin's guide at most this often when Tvheadend pushes changes. 0 = leave it to Jellyfin's schedule.</div>
-                </div>
-                <div class="checkboxContainer checkboxContainer-withDescription">
-                    <label><input is="emby-checkbox" type="checkbox" id="HideRecordingsChannel" /><span>Hide the recordings channel</span></label>
-                </div>
-                <div class="inputContainer">
-                    <label class="inputLabel inputLabelUnfocused" for="PrePaddingSeconds">Recording pre-padding (s)</label>
-                    <input is="emby-input" type="number" id="PrePaddingSeconds" min="0" />
-                </div>
-                <div class="inputContainer">
-                    <label class="inputLabel inputLabelUnfocused" for="PostPaddingSeconds">Recording post-padding (s)</label>
-                    <input is="emby-input" type="number" id="PostPaddingSeconds" min="0" />
-                </div>
-                <div class="inputContainer">
-                    <label class="inputLabel inputLabelUnfocused" for="DvrConfig">DVR configuration UUID</label>
-                    <input is="emby-input" type="text" id="DvrConfig" />
-                    <div class="fieldDescription">Optional Tvheadend DVR profile UUID for new recordings.</div>
+                    <div class="fieldDescription">Tvheadend pushes EPG changes as they happen; refresh Jellyfin's guide at most this often in response. 0 = leave it to Jellyfin's own 24-hour schedule. Jellyfin can only refresh the whole guide at once and that takes minutes on a large channel list, so this is a rate limit — 60 is a sensible starting point.</div>
                 </div>
 
                 <div id="htspStatus" style="margin:0.75em 0;min-height:1.2em;color:#7cb;"></div>
@@ -106,9 +90,8 @@
         (function () {
             var pluginId = "48472334-959b-4838-a963-3a92e5a603d1";
             var fields = ["Host", "HtspPort", "Username", "Password", "Profile",
-                "SubscriptionWeight", "MaxBufferMb", "StreamBaseUrl",
-                "PrePaddingSeconds", "PostPaddingSeconds", "DvrConfig", "AutoGuideRefreshMinutes"];
-            var checks = ["ImportChannelTags", "HideRecordingsChannel"];
+                "SubscriptionWeight", "MaxBufferMb", "StreamBaseUrl", "AutoGuideRefreshMinutes"];
+            var checks = ["ImportChannelTags"];
 
             function load(cfg) {
                 fields.forEach(function (f) { document.getElementById(f).value = cfg[f] == null ? "" : cfg[f]; });
@@ -124,9 +107,6 @@
                 cfg.StreamBaseUrl = document.getElementById("StreamBaseUrl").value;
                 cfg.SubscriptionWeight = parseInt(document.getElementById("SubscriptionWeight").value, 10);
                 cfg.MaxBufferMb = parseInt(document.getElementById("MaxBufferMb").value, 10);
-                cfg.PrePaddingSeconds = parseInt(document.getElementById("PrePaddingSeconds").value, 10);
-                cfg.PostPaddingSeconds = parseInt(document.getElementById("PostPaddingSeconds").value, 10);
-                cfg.DvrConfig = document.getElementById("DvrConfig").value;
                 cfg.AutoGuideRefreshMinutes = parseInt(document.getElementById("AutoGuideRefreshMinutes").value, 10) || 0;
                 checks.forEach(function (f) { cfg[f] = document.getElementById(f).checked; });
                 return cfg;

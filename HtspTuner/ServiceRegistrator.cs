@@ -25,9 +25,9 @@ public class ServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<ITunerHost>(sp => sp.GetRequiredService<HtspTunerHost>());
         serviceCollection.AddSingleton<IListingsProvider, HtspListingsProvider>();
 
-        // NOTE: HtspLiveTvService (the integrated ILiveTvService) is intentionally NOT registered. It was a
-        // second, config-only way to use the plugin that listed channels without a tuner and duplicated the
-        // tuner path; the class is kept for its Tvheadend-native DVR logic, to be reattached to the tuner
-        // later. With only the tuner host, DVR is handled by Jellyfin core recording the tuner stream.
+        // NOTE: no ILiveTvService is registered. There was one (HtspLiveTvService): a second, config-only way
+        // to use the plugin that listed channels without a tuner and duplicated the tuner path. It has since
+        // been DELETED, not kept -- so its Tvheadend-native DVR logic is gone with it, and DVR today means
+        // Jellyfin core recording our tuner stream itself rather than asking Tvheadend to record.
     }
 }

@@ -59,40 +59,11 @@ internal sealed record HtspQueueStatus
     public long IdropCount { get; init; }
 }
 
-/// <summary>
-/// Free and total recording storage, from the <c>getDiskSpace</c> response.
-/// </summary>
-internal sealed record HtspDiskSpace
-{
-    /// <summary>Gets the free space on the recording volume, in bytes.</summary>
-    public long FreeBytes { get; init; }
-
-    /// <summary>Gets the total size of the recording volume, in bytes.</summary>
-    public long TotalBytes { get; init; }
-}
-
-/// <summary>
-/// Tvheadend's wall clock and time zone, from the <c>getSysTime</c> response.
-/// </summary>
-internal sealed record HtspSysTime
-{
-    /// <summary>Gets the server's current UTC time.</summary>
-    public DateTime Utc { get; init; }
-
-    /// <summary>Gets the server's time-zone offset, in minutes east of UTC.</summary>
-    public int TimeZoneMinutes { get; init; }
-}
-
 /// <summary>A streaming profile advertised by Tvheadend, from the <c>getProfiles</c> response.</summary>
 /// <param name="Uuid">The profile UUID.</param>
 /// <param name="Name">The profile name, as passed to <c>subscribe</c>.</param>
 /// <param name="Comment">The optional human-readable comment.</param>
 internal sealed record HtspProfile(string Uuid, string Name, string? Comment);
-
-/// <summary>An HTTP streaming ticket, from the <c>getTicket</c> response.</summary>
-/// <param name="Path">The URL path the ticket authorises.</param>
-/// <param name="Ticket">The single-use ticket token, appended as <c>?ticket=</c>.</param>
-internal sealed record HtspTicket(string Path, string Ticket);
 
 /// <summary>
 /// A point-in-time view of one active subscription, for the configuration-page dashboard.

@@ -44,26 +44,20 @@ public class PluginConfiguration : BasePluginConfiguration
     /// </summary>
     public string StreamBaseUrl { get; set; } = string.Empty;
 
-    /// <summary>Gets or sets default recording padding before a programme, in seconds.</summary>
-    public int PrePaddingSeconds { get; set; }
-
-    /// <summary>Gets or sets default recording padding after a programme, in seconds.</summary>
-    public int PostPaddingSeconds { get; set; }
-
-    /// <summary>Gets or sets the Tvheadend DVR configuration UUID used for new recordings.</summary>
-    public string DvrConfig { get; set; } = string.Empty;
-
     /// <summary>Gets or sets a value indicating whether to import Tvheadend channel tags as Jellyfin genres.</summary>
     public bool ImportChannelTags { get; set; } = true;
 
     /// <summary>
     /// Gets or sets how often, at most, to refresh Jellyfin's guide when Tvheadend pushes EPG changes,
-    /// in minutes. Zero leaves it to Jellyfin's own schedule. EPG is streamed live over HTSP and held in
-    /// an indexed cache, so a refresh is a cheap in-memory read (no per-channel network scan) — this can
-    /// safely be small (e.g. 30) for a near-live guide.
+    /// in minutes. Zero disables it and leaves the guide to Jellyfin's own 24-hour schedule.
     /// </summary>
+    /// <remarks>
+    /// Reading our EPG is a cheap in-memory lookup, but the refresh itself is NOT cheap and none of it is
+    /// ours: Jellyfin's <c>GuideManager.RefreshGuide</c> is all-or-nothing (<c>IGuideManager</c> exposes no
+    /// per-channel entry point), and for every channel it queries the database for that channel's existing
+    /// programmes, diffs them, writes the changes back, and pre-caches artwork. On ~322 channels that is
+    /// minutes of work, so this is a rate limit and not a poll interval — keep it well above the time a
+    /// refresh actually takes or refreshes will queue back-to-back forever.
+    /// </remarks>
     public int AutoGuideRefreshMinutes { get; set; }
-
-    /// <summary>Gets or sets a value indicating whether the recordings channel is hidden.</summary>
-    public bool HideRecordingsChannel { get; set; }
 }
