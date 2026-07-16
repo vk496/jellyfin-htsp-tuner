@@ -58,6 +58,7 @@ internal static class MediaStreamBuilder
                 stream.IsDefault = firstAudio;
                 firstAudio = false;
                 stream.IsHearingImpaired = s.AudioType == 2;
+                stream.Title = AudioTitle(s.AudioType);
             }
 
             result.Add(stream);
@@ -159,6 +160,26 @@ internal static class MediaStreamBuilder
 
         return s.IsAudio ? MediaStreamType.Audio : MediaStreamType.Subtitle;
     }
+
+    // Nothing on the wire names an audio track -- HTSP carries a language and a DVB audio_type, no title --
+    // so this is a label we synthesise, the same way the video stream's title is synthesised from sourceinfo.
+    //
+    // It exists because audio_type 3 is otherwise indistinguishable from a normal track in Jellyfin, which
+    // has exactly one accessibility flag (IsHearingImpaired) and nothing for audio description. Picking one
+    // blind is a bad surprise: DVB audio description is usually "receiver mix", meaning the track carries the
+    // narration ALONE and expects the receiver to mix it into the main audio -- something Jellyfin cannot do.
+    // So it plays as narration over silence and looks broken, when it is exactly what was broadcast.
+    //
+    // audio_type 2 is deliberately absent: it sets IsHearingImpaired instead. (Jellyfin does not actually
+    // render that flag for audio -- only for subtitles -- but a hearing-impaired track still plays normal
+    // programme audio, so picking one blind is a mild surprise rather than a broken-sounding stream.)
+    // 0 (undefined) and 1 (clean effects) get no title, leaving Jellyfin's normal
+    // "Spanish - MP2 - Stereo - Default" untouched.
+    private static string? AudioTitle(int audioType) => audioType switch
+    {
+        3 => "Audio description",
+        _ => null,
+    };
 
     // Jellyfin's codec strings, NOT ffmpeg's. Because we hand the server a stream table with real indexes,
     // it never probes us (MediaSourceManager.cs: `MediaStreams.Any(i => i.Index != -1) || !SupportsProbing`)
