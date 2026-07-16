@@ -22,7 +22,7 @@ namespace HtspTuner.LiveTv;
 /// implements <see cref="ITunerHost"/> directly and mirrors the base host's per-tuner enumeration.
 /// Streaming reuses the same <see cref="HtspLiveStream"/> and muxer as the service path.
 /// </remarks>
-public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost
+public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposable
 {
     private const string Prefix = "htsp_";
 
@@ -33,6 +33,7 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost
     private readonly ConcurrentDictionary<string, HtspClient> _clients = new();
     private readonly ConcurrentDictionary<string, (byte[] Data, string ContentType)> _iconCache = new();
     private readonly SemaphoreSlim _clientLock = new(1, 1);
+    private bool _disposed;
 
     /// <summary>Initializes a new instance of the <see cref="HtspTunerHost"/> class.</summary>
     /// <param name="config">The configuration manager, used to read configured tuners.</param>
@@ -46,6 +47,45 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost
         _appHost = appHost;
         _mediaEncoder = mediaEncoder;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Drops every cached HTSP connection. Jellyfin's "restart" rebuilds the app host inside the SAME
+    /// process, so nothing but this disposes our clients: an undisposed <see cref="HtspClient"/> keeps its
+    /// socket, its 45s keepalive and — worst — its reconnect supervisor running forever, orphaned from any
+    /// app host that could ever use it. Every restart used to strand one more, each still re-syncing 322
+    /// channels and 64k EPG events, which is why Tvheadend showed connections Jellyfin was not using.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately <see cref="IDisposable"/> and not <see cref="IAsyncDisposable"/>: Microsoft's DI throws
+    /// if a singleton implements only the async form and the provider is disposed synchronously, whereas an
+    /// async disposal falls back to this happily. Idempotent because the container tracks this instance
+    /// twice (as itself and via the <see cref="ITunerHost"/> factory) and will dispose it twice.
+    /// </remarks>
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        foreach (var client in _clients.Values)
+        {
+            try
+            {
+                // Blocking, but this is shutdown: DisposeAsync cancels the supervisor and awaits it, and
+                // every await inside is ConfigureAwait(false), so there is no context to deadlock on.
+                client.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "HTSP client did not shut down cleanly");
+            }
+        }
+
+        _clients.Clear();
+        _clientLock.Dispose();
     }
 
     /// <inheritdoc/>
