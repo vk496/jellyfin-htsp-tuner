@@ -66,6 +66,9 @@ internal sealed class HtspSubscription : IAsyncDisposable
     /// <summary>Gets the unique subscription id.</summary>
     public int Id { get; }
 
+    /// <summary>Gets the UTC time this subscription was created, for the status dashboard.</summary>
+    public DateTime CreatedUtc { get; } = DateTime.UtcNow;
+
     /// <summary>Gets the channel id this subscription is watching. Zero until <see cref="StartAsync"/>.</summary>
     public long ChannelId { get; private set; }
 

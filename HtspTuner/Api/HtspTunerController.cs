@@ -74,6 +74,56 @@ public class HtspTunerController : ControllerBase
         return icon is { } i ? File(i.Data, i.ContentType) : NotFound();
     }
 
+    /// <summary>
+    /// Serves an EPG artwork image fetched from Tvheadend over HTSP. Tvheadend reports programme images
+    /// as <c>imagecache/&lt;id&gt;</c> paths rather than URLs, which Jellyfin cannot fetch on its own, so we
+    /// hand it a URL pointing here and pull the bytes over the HTSP connection we already hold.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="id"/> is an image-cache id, NOT a path: the route only accepts digits, and the path
+    /// sent to Tvheadend is rebuilt here as <c>imagecache/{id}</c>. That is deliberate — <c>fileOpen</c>
+    /// takes an arbitrary server-side path, so letting a caller supply one would turn this into a file-read
+    /// proxy for the whole Tvheadend host.
+    /// Anonymous like <see cref="GetIcon"/>: Jellyfin's image downloader fetches it server-side without
+    /// credentials, and it only ever exposes EPG artwork.
+    /// </remarks>
+    /// <param name="serverKey">The stable per-server key; an image-cache id only means something on the
+    /// Tvheadend that issued it, and several servers can be configured.</param>
+    /// <param name="id">The Tvheadend image-cache id.</param>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>The image, or 404 if Tvheadend has no such image.</returns>
+    [HttpGet("Image/{serverKey}/{id:long}")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult> GetImage(
+        [FromRoute, Required] string serverKey, [FromRoute, Required] long id, CancellationToken cancellationToken)
+    {
+        var image = await _tunerHost.GetEpgImageAsync(serverKey, id, cancellationToken).ConfigureAwait(false);
+        if (image is not { } i)
+        {
+            return NotFound();
+        }
+
+        // An imagecache id is immutable in Tvheadend, so this is safe to cache hard. Jellyfin copies the
+        // image to local storage on first fetch and only pre-caches NEW programmes, so it should not come
+        // back for the same id -- but several programmes can share one image, and this makes that cheap.
+        Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+        return File(i.Data, i.ContentType);
+    }
+
+    /// <summary>
+    /// Lists every live HTSP subscription with its signal and queue health.
+    /// </summary>
+    /// <remarks>
+    /// Reads cached state that Tvheadend already pushed, so it costs nothing to poll. Elevated (unlike the
+    /// image endpoints) because it reveals what is being watched right now.
+    /// </remarks>
+    /// <returns>One entry per active subscription.</returns>
+    [HttpGet("Status")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public ActionResult<IReadOnlyList<HtspTunerSnapshot>> GetStatus() => Ok(_tunerHost.GetTunerStatus());
+
     /// <summary>Tests a Tvheadend connection with the given credentials.</summary>
     /// <param name="request">The connection details.</param>
     /// <returns>Whether it connected, and a message.</returns>

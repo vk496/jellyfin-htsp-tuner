@@ -9,6 +9,7 @@ using MediaBrowser.Controller.LiveTv;
 using MediaBrowser.Controller.MediaEncoding;
 using MediaBrowser.Model.Dto;
 using MediaBrowser.Model.LiveTv;
+using MediaBrowser.Model.Tasks;
 using Microsoft.Extensions.Logging;
 
 namespace HtspTuner.LiveTv;
@@ -26,26 +27,43 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
 {
     private const string Prefix = "htsp_";
 
+    // Jellyfin's own guide-refresh task. Matched by key because the type lives in the server's
+    // Jellyfin.LiveTv assembly, which is not on NuGet, so the generic ITaskManager overloads that every
+    // in-tree caller uses are out of reach here.
+    private const string RefreshGuideTaskKey = "RefreshGuide";
+
     private readonly IConfigurationManager _config;
     private readonly IServerApplicationHost _appHost;
     private readonly IMediaEncoder _mediaEncoder;
+    private readonly ITaskManager _taskManager;
     private readonly ILogger<HtspTunerHost> _logger;
     private readonly ConcurrentDictionary<string, HtspClient> _clients = new();
     private readonly ConcurrentDictionary<string, (byte[] Data, string ContentType)> _iconCache = new();
     private readonly SemaphoreSlim _clientLock = new(1, 1);
+    private readonly Lock _refreshGate = new();
+
+    // Starts "now", not MinValue: Tvheadend pushes EPG constantly, so a zero start would make the first
+    // push after every single restart kick off a full multi-minute refresh.
+    private DateTime _lastGuideRefreshUtc = DateTime.UtcNow;
     private bool _disposed;
 
     /// <summary>Initializes a new instance of the <see cref="HtspTunerHost"/> class.</summary>
     /// <param name="config">The configuration manager, used to read configured tuners.</param>
     /// <param name="appHost">The application host.</param>
     /// <param name="mediaEncoder">ffprobe wrapper, passed to each live stream for metadata probing.</param>
+    /// <param name="taskManager">Task manager, used to queue Jellyfin's guide refresh when Tvheadend pushes EPG changes.</param>
     /// <param name="logger">The logger.</param>
     public HtspTunerHost(
-        IConfigurationManager config, IServerApplicationHost appHost, IMediaEncoder mediaEncoder, ILogger<HtspTunerHost> logger)
+        IConfigurationManager config,
+        IServerApplicationHost appHost,
+        IMediaEncoder mediaEncoder,
+        ITaskManager taskManager,
+        ILogger<HtspTunerHost> logger)
     {
         _config = config;
         _appHost = appHost;
         _mediaEncoder = mediaEncoder;
+        _taskManager = taskManager;
         _logger = logger;
     }
 
@@ -177,13 +195,67 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
     {
         var (tuner, tvhChannelId) = Resolve(channelId);
         var client = await ClientForAsync(tuner, cancellationToken).ConfigureAwait(false);
+
+        // Where our Image endpoint lives for THIS server: an imagecache id only means something on the
+        // Tvheadend that issued it, so the key has to travel with it.
+        var imageBase = LocalBaseUrl() + "/HtspTuner/Image/" + StableKey(client.Options) + "/";
         return client.GetEvents(tvhChannelId, startDateUtc, endDateUtc)
-            .Select(e => Epg.EpgMapper.ToProgram(channelId, e))
+            .Select(e => Epg.EpgMapper.ToProgram(channelId, e, imageBase))
             .ToList();
     }
 
     /// <summary>Gets a value indicating whether any HTSP tuner is configured.</summary>
     public bool HasTuners => Tuners().Any();
+
+    // Tvheadend pushes EPG and channel changes as they happen (debounced in HtspClient), which is the only
+    // reason a guide can be near-live instead of up to 24 hours stale. What we CANNOT do is apply just the
+    // change: IGuideManager exposes RefreshGuide() and nothing else -- no per-channel entry point exists --
+    // and the work is all Jellyfin's (a DB read, diff and write per channel, plus artwork pre-caching), so
+    // it costs minutes on a large channel list. Hence a rate limit, not a poll: at most one refresh per
+    // AutoGuideRefreshMinutes, and never while one is already running.
+    private void OnGuideDataChanged()
+    {
+        var minutes = Plugin.Instance?.Configuration.AutoGuideRefreshMinutes ?? 0;
+        if (minutes <= 0)
+        {
+            return; // opt-in; otherwise Jellyfin's own 24h schedule owns the guide
+        }
+
+        lock (_refreshGate)
+        {
+            if (DateTime.UtcNow - _lastGuideRefreshUtc < TimeSpan.FromMinutes(minutes))
+            {
+                return;
+            }
+
+            _lastGuideRefreshUtc = DateTime.UtcNow;
+        }
+
+        try
+        {
+            var worker = _taskManager.ScheduledTasks.FirstOrDefault(
+                t => string.Equals(t.ScheduledTask.Key, RefreshGuideTaskKey, StringComparison.Ordinal));
+            if (worker is null)
+            {
+                _logger.LogDebug("No {Key} task registered; leaving the guide to Jellyfin", RefreshGuideTaskKey);
+                return;
+            }
+
+            if (worker.State != TaskState.Idle)
+            {
+                _logger.LogDebug("Guide refresh already {State}; skipping this push", worker.State);
+                return;
+            }
+
+            _logger.LogInformation("Tvheadend pushed guide changes; queueing a Jellyfin guide refresh");
+            _taskManager.QueueScheduledTask(worker.ScheduledTask, new TaskOptions());
+        }
+        catch (Exception ex)
+        {
+            // Never let a background push break the tuner.
+            _logger.LogWarning(ex, "Could not queue the guide refresh");
+        }
+    }
 
     /// <inheritdoc/>
     public async Task Validate(TunerHostInfo info)
@@ -323,6 +395,75 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
         }
     }
 
+    /// <summary>
+    /// A point-in-time view of every live HTSP subscription, for the config page's status panel.
+    /// </summary>
+    /// <remarks>
+    /// Tvheadend pushes <c>signalStatus</c> and <c>queueStatus</c> for each subscription and we already
+    /// decode both; this is the only place they surface. Jellyfin has nowhere to show "which mux is this
+    /// tuned on, is the signal healthy, are frames being dropped" — that answer only exists here.
+    /// Reads cached state only: no HTSP round-trip, so polling it is free.
+    /// </remarks>
+    /// <returns>One entry per active subscription, across every configured server.</returns>
+    public IReadOnlyList<HtspTunerSnapshot> GetTunerStatus()
+        => _clients.Values
+            .SelectMany(c => c.ActiveSubscriptions.Select(s => new HtspTunerSnapshot
+            {
+                SubscriptionId = s.Id,
+                ChannelId = s.ChannelId,
+                ChannelName = c.GetChannel(s.ChannelId)?.Name,
+                Adapter = s.Start?.SourceInfo?.Adapter,
+                Mux = s.Start?.SourceInfo?.Mux,
+                Signal = s.Signal,
+                Queue = s.Queue,
+                Status = s.LastError?.Message,
+                IsStarted = s.Start is not null,
+                StartedUtc = s.CreatedUtc,
+            }))
+            .OrderBy(s => s.SubscriptionId)
+            .ToList();
+
+    /// <summary>Fetches one EPG artwork image from Tvheadend over HTSP.</summary>
+    /// <remarks>
+    /// Deliberately NOT cached in-process, unlike channel icons: there are a handful of channels but
+    /// thousands of programme images, so caching them all would be a memory bomb. Jellyfin copies each
+    /// image to local storage on first fetch and only pre-caches newly-added programmes, so it does not
+    /// come back for the same id — the endpoint's cache header covers the rest.
+    /// </remarks>
+    /// <param name="serverKey">The stable key of the Tvheadend that issued the id.</param>
+    /// <param name="imageId">The image-cache id.</param>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>The image bytes and content type, or null if it could not be fetched.</returns>
+    public async Task<(byte[] Data, string ContentType)?> GetEpgImageAsync(
+        string serverKey, long imageId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var tuner = Tuners().FirstOrDefault(t =>
+                string.Equals(StableKey(OptionsFor(t)), serverKey, StringComparison.Ordinal));
+            if (tuner is null)
+            {
+                return null;
+            }
+
+            var client = await ClientForAsync(tuner, cancellationToken).ConfigureAwait(false);
+            var data = await client
+                .ReadFileAsync(ImageCachePath(imageId), cancellationToken).ConfigureAwait(false);
+            return data.Length == 0 ? null : (data, ContentTypeOf(data));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Could not fetch EPG image {Image} over HTSP", imageId);
+            return null;
+        }
+    }
+
+    /// <summary>Builds the Tvheadend file path for an image-cache id.</summary>
+    /// <param name="imageId">The image-cache id.</param>
+    /// <returns>The path to pass to <c>fileOpen</c>.</returns>
+    internal static string ImageCachePath(long imageId)
+        => "imagecache/" + imageId.ToString(CultureInfo.InvariantCulture);
+
     /// <summary>Fetches a channel's icon from Tvheadend over HTSP (cached per channel).</summary>
     /// <param name="channelId">The prefixed channel id.</param>
     /// <param name="cancellationToken">A cancellation token.</param>
@@ -419,6 +560,13 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
             }
 
             var client = new HtspClient(opts, _logger);
+
+            // Both mean "Jellyfin's copy of the guide is now stale". Subscribed before connecting so the
+            // pushes that arrive during the initial sync are not missed; the handler rate-limits itself and
+            // does nothing at all until the user opts in.
+            client.EpgChanged += OnGuideDataChanged;
+            client.ChannelsChanged += OnGuideDataChanged;
+
             try
             {
                 await client.ConnectAsync(cancellationToken).ConfigureAwait(false);

@@ -83,6 +83,15 @@
                     </button>
                 </div>
             </form>
+
+            <div class="verticalSection">
+                <h2 class="sectionTitle">Live subscriptions</h2>
+                <div class="fieldDescription" style="margin-bottom:0.6em;">
+                    What each HTSP tuner is doing right now: where it is tuned, how the signal looks and whether
+                    Tvheadend is dropping frames. Refreshes every 5 seconds while this page is open.
+                </div>
+                <div id="htspTuners">Loading&hellip;</div>
+            </div>
         </div>
     </div>
 
@@ -114,6 +123,61 @@
 
             function showStatus(msg) { document.getElementById("htspStatus").textContent = msg; }
 
+            function esc(s) {
+                var d = document.createElement("div");
+                d.textContent = s == null ? "" : String(s);
+                return d.innerHTML;
+            }
+
+            // Tvheadend reports SNR/signal either as a raw 0..65535 relative value or in milli-dB, and says
+            // which via the *_scale field. Rendering the raw number for both would be meaningless.
+            function fmtLevel(v, scale) {
+                if (v == null) { return "&mdash;"; }
+                if (scale === 2) { return (v / 1000).toFixed(1) + " dB"; }
+                if (scale === 1) { return Math.round((v / 65535) * 100) + "%"; }
+                return String(v);
+            }
+
+            function renderTuners(rows) {
+                var el = document.getElementById("htspTuners");
+                if (!rows || !rows.length) {
+                    el.innerHTML = '<div class="fieldDescription">No channel is being watched right now.</div>';
+                    return;
+                }
+                var html = '<table style="width:100%;border-collapse:collapse;">' +
+                    '<tr style="text-align:left;opacity:.7;">' +
+                    '<th>Channel</th><th>Tuned on</th><th>Signal</th><th>SNR</th><th>Dropped (I/P/B)</th><th>For</th></tr>';
+                rows.forEach(function (r) {
+                    var sig = r.Signal || {};
+                    var q = r.Queue || {};
+                    // Any I-frame drop is visible breakup, so call it out rather than bury it in a row of numbers.
+                    var bad = (q.IdropCount || 0) > 0;
+                    var age = Math.max(0, Math.round((Date.now() - new Date(r.StartedUtc).getTime()) / 1000));
+                    var mins = Math.floor(age / 60) + "m " + (age % 60) + "s";
+                    html += '<tr style="border-top:1px solid rgba(255,255,255,.1);">' +
+                        "<td>" + esc(r.ChannelName || r.ChannelId) +
+                            (r.Status ? ' <span style="color:#e88;">(' + esc(r.Status) + ")</span>" : "") + "</td>" +
+                        "<td>" + esc(r.Adapter || "&mdash;") + (r.Mux ? " &middot; " + esc(r.Mux) : "") + "</td>" +
+                        "<td>" + fmtLevel(sig.Signal, sig.SignalScale) + "</td>" +
+                        "<td>" + fmtLevel(sig.Snr, sig.SnrScale) + "</td>" +
+                        '<td style="color:' + (bad ? "#e88" : "inherit") + ';">' +
+                            (q.IdropCount || 0) + " / " + (q.PdropCount || 0) + " / " + (q.BdropCount || 0) + "</td>" +
+                        "<td>" + mins + "</td></tr>";
+                });
+                el.innerHTML = html + "</table>";
+            }
+
+            function pollTuners() {
+                ApiClient.getJSON(ApiClient.getUrl("HtspTuner/Status"))
+                    .then(renderTuners)
+                    .catch(function () {
+                        document.getElementById("htspTuners").innerHTML =
+                            '<div class="fieldDescription">Status unavailable.</div>';
+                    });
+            }
+
+            var pollTimer = null;
+
             document.querySelector("#HtspTunerConfigPage").addEventListener("pageshow", function () {
                 Dashboard.showLoadingMsg();
                 showStatus("");
@@ -121,6 +185,13 @@
                     load(cfg);
                     Dashboard.hideLoadingMsg();
                 });
+                pollTuners();
+                pollTimer = setInterval(pollTuners, 5000);
+            });
+
+            // Stop polling when the page goes away, or the timer outlives it and keeps hitting the server.
+            document.querySelector("#HtspTunerConfigPage").addEventListener("pagehide", function () {
+                if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
             });
 
             document.querySelector("#TestConnection").addEventListener("click", function () {

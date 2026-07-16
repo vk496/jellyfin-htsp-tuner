@@ -7,7 +7,7 @@ namespace HtspTuner.Htsp;
 /// Every field is optional: Tvheadend only reports what the underlying adapter exposes, so an IPTV
 /// input reports almost nothing while a DVB-S input reports the full set.
 /// </remarks>
-internal sealed record HtspSignalStatus
+public sealed record HtspSignalStatus
 {
     /// <summary>Gets the human-readable front-end lock state, such as <c>"OK"</c> or <c>"NONE"</c>.</summary>
     public string? Status { get; init; }
@@ -38,7 +38,7 @@ internal sealed record HtspSignalStatus
 /// The drop counters are the ones that matter operationally: a rising <see cref="IdropCount"/> means
 /// key frames are being lost and the picture will visibly break up.
 /// </remarks>
-internal sealed record HtspQueueStatus
+public sealed record HtspQueueStatus
 {
     /// <summary>Gets the number of packets currently queued.</summary>
     public long Packets { get; init; }
@@ -68,7 +68,7 @@ internal sealed record HtspProfile(string Uuid, string Name, string? Comment);
 /// <summary>
 /// A point-in-time view of one active subscription, for the configuration-page dashboard.
 /// </summary>
-internal sealed record HtspTunerSnapshot
+public sealed record HtspTunerSnapshot
 {
     /// <summary>Gets the subscription id.</summary>
     public required int SubscriptionId { get; init; }
