@@ -160,6 +160,14 @@ internal static class MediaStreamBuilder
         return s.IsAudio ? MediaStreamType.Audio : MediaStreamType.Subtitle;
     }
 
+    // Jellyfin's codec strings, NOT ffmpeg's. Because we hand the server a stream table with real indexes,
+    // it never probes us (MediaSourceManager.cs: `MediaStreams.Any(i => i.Index != -1) || !SupportsProbing`)
+    // -- so ProbeResultNormalizer.NormalizeSubtitleCodec never runs on our streams, and the subtitle names
+    // are exactly the ones it rewrites. It maps ffmpeg's "dvb_subtitle" to "DVBSUB", which is the substring
+    // MediaStream.IsTextFormat looks for to tell graphical subtitles from text ones. Hand it "dvb_subtitle"
+    // and the underscore defeats that Contains("dvbsub") check: Jellyfin calls a bitmap subtitle "text",
+    // tries to extract it to .srt, and ffmpeg dies on the .srt that was never written. So emit what the
+    // probe would have produced. Teletext is genuinely text (libzvbi decodes it), hence the split.
     private static string CodecName(HtspCodec codec) => codec switch
     {
         HtspCodec.H264 => "h264",
@@ -171,8 +179,8 @@ internal static class MediaStreamBuilder
         HtspCodec.Ac3 => "ac3",
         HtspCodec.Eac3 => "eac3",
         HtspCodec.Vorbis => "vorbis",
-        HtspCodec.DvbSub => "dvb_subtitle",
-        HtspCodec.Teletext => "dvb_teletext",
+        HtspCodec.DvbSub => "DVBSUB",
+        HtspCodec.Teletext => "DVBTXT",
         _ => "data",
     };
 }
