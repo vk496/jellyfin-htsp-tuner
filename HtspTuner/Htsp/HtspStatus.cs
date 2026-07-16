@@ -63,7 +63,7 @@ public sealed record HtspQueueStatus
 /// <param name="Uuid">The profile UUID.</param>
 /// <param name="Name">The profile name, as passed to <c>subscribe</c>.</param>
 /// <param name="Comment">The optional human-readable comment.</param>
-internal sealed record HtspProfile(string Uuid, string Name, string? Comment);
+public sealed record HtspProfile(string Uuid, string Name, string? Comment);
 
 /// <summary>
 /// A point-in-time view of one active subscription, for the configuration-page dashboard.

@@ -348,6 +348,10 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
     {
         var key = StableKey(client.Options);
         var baseUrl = LocalBaseUrl();
+        var tagNames = Plugin.Instance?.Configuration.ImportChannelTags == true
+            ? client.GetTags().ToDictionary(t => t.Id, t => t.Name)
+            : null;
+
         return client.GetChannels()
             .OrderBy(c => c.Number == 0 ? int.MaxValue : c.Number)
             .Select(c =>
@@ -361,9 +365,30 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
                     Number = c.DisplayNumber,
                     ImageUrl = IconUrl(c.Icon, channelId, baseUrl),
                     ChannelType = c.IsRadio ? ChannelType.Radio : ChannelType.TV,
+                    Tags = TagsFor(c, tagNames),
                 };
             })
             .ToList();
+    }
+
+    // Tvheadend groups channels with tags ("Sports", "HD", "Kids", ...) and pushes them over HTSP; we cached
+    // them and threw them away. ChannelInfo.Tags is the only channel taxonomy Jellyfin accepts -- there is no
+    // Genres field on it -- and no built-in tuner populates it, but it does reach LiveTvChannel.Tags and so
+    // becomes queryable (e.g. /Items?IncludeItemTypes=LiveTvChannel&Tags=Sports).
+    private static string[]? TagsFor(HtspChannel channel, Dictionary<long, string>? tagNames)
+    {
+        if (tagNames is null)
+        {
+            return null; // opt-out: leave Tags untouched rather than clearing what is there
+        }
+
+        return channel.TagIds
+            .Select(id => tagNames.GetValueOrDefault(id))
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .Select(n => n!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     // External logo URLs are used as-is; Tvheadend's own icons (imagecache/N paths) are served by our
@@ -392,6 +417,30 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
         catch (UriFormatException)
         {
             return _appHost.GetApiUrlForLocalAccess().TrimEnd('/');
+        }
+    }
+
+    /// <summary>Lists the streaming profiles the configured Tvheadend grants this login.</summary>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>The profiles, or an empty list if no tuner is configured or the server is unreachable.</returns>
+    public async Task<IReadOnlyList<HtspProfile>> GetProfilesAsync(CancellationToken cancellationToken)
+    {
+        var tuner = Tuners().FirstOrDefault();
+        if (tuner is null)
+        {
+            return Array.Empty<HtspProfile>();
+        }
+
+        try
+        {
+            var client = await ClientForAsync(tuner, cancellationToken).ConfigureAwait(false);
+            return await client.GetProfilesAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            // Suggestions are a nicety: the config page falls back to free text.
+            _logger.LogDebug(ex, "Could not list Tvheadend streaming profiles");
+            return Array.Empty<HtspProfile>();
         }
     }
 

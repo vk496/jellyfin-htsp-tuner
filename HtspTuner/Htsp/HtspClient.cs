@@ -142,6 +142,28 @@ internal sealed class HtspClient : IAsyncDisposable
         await sub.StopAsync().ConfigureAwait(false);
     }
 
+    /// <summary>Asks Tvheadend which streaming profiles this login may use.</summary>
+    /// <remarks>
+    /// The profile name is what <c>subscribe</c> takes, and a wrong one silently breaks tuning — so the
+    /// config page offers these as suggestions instead of leaving the user to type a name from memory.
+    /// The list is per-login: Tvheadend only returns the profiles the authenticated user is granted.
+    /// </remarks>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>The profiles this connection may subscribe with.</returns>
+    public async Task<IReadOnlyList<HtspProfile>> GetProfilesAsync(CancellationToken cancellationToken)
+    {
+        var reply = await _connection.SendAsync(
+            new HtspMessage().Add("method", "getProfiles"), cancellationToken).ConfigureAwait(false);
+
+        return reply.GetMapList("profiles")
+            .Select(p => new HtspProfile(
+                p.GetString("uuid") ?? string.Empty,
+                p.GetString("name") ?? string.Empty,
+                p.GetString("comment")))
+            .Where(p => p.Name.Length > 0)
+            .ToList();
+    }
+
     /// <summary>Sends an arbitrary request, e.g. a DVR mutator, and returns the reply.</summary>
     /// <param name="message">The request.</param>
     /// <param name="cancellationToken">A cancellation token.</param>

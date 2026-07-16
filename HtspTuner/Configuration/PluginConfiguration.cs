@@ -44,20 +44,25 @@ public class PluginConfiguration : BasePluginConfiguration
     /// </summary>
     public string StreamBaseUrl { get; set; } = string.Empty;
 
-    /// <summary>Gets or sets a value indicating whether to import Tvheadend channel tags as Jellyfin genres.</summary>
+    /// <summary>
+    /// Gets or sets a value indicating whether Tvheadend's channel tags are copied onto the Jellyfin
+    /// channels. They land on <c>LiveTvChannel.Tags</c> — Jellyfin has no genre field for channels.
+    /// </summary>
     public bool ImportChannelTags { get; set; } = true;
 
     /// <summary>
-    /// Gets or sets how often, at most, to refresh Jellyfin's guide when Tvheadend pushes EPG changes,
-    /// in minutes. Zero disables it and leaves the guide to Jellyfin's own 24-hour schedule.
+    /// Gets or sets the minimum age, in minutes, before a Tvheadend EPG push may trigger a Jellyfin guide
+    /// refresh. Zero disables it entirely, leaving the guide to Jellyfin's own schedule.
     /// </summary>
     /// <remarks>
-    /// Reading our EPG is a cheap in-memory lookup, but the refresh itself is NOT cheap and none of it is
-    /// ours: Jellyfin's <c>GuideManager.RefreshGuide</c> is all-or-nothing (<c>IGuideManager</c> exposes no
-    /// per-channel entry point), and for every channel it queries the database for that channel's existing
-    /// programmes, diffs them, writes the changes back, and pre-caches artwork. On ~322 channels that is
-    /// minutes of work, so this is a rate limit and not a poll interval — keep it well above the time a
-    /// refresh actually takes or refreshes will queue back-to-back forever.
+    /// Advanced. Reading our EPG is a cheap in-memory lookup, but the refresh itself is NOT cheap and none
+    /// of it is ours: Jellyfin's <c>GuideManager.RefreshGuide</c> is all-or-nothing (<c>IGuideManager</c>
+    /// exposes no per-channel entry point, so the delta Tvheadend hands us cannot be applied on its own),
+    /// and for every channel it queries the database for that channel's programmes, diffs them, writes the
+    /// changes back, and pre-caches artwork. On a few hundred channels that is many minutes of work.
+    /// So this is a rate limit, not a poll interval, and the default is deliberately long: it exists to
+    /// catch a guide that has gone stale, not to keep one live. Setting it near the duration of a refresh
+    /// would queue refreshes back-to-back forever.
     /// </remarks>
-    public int AutoGuideRefreshMinutes { get; set; }
+    public int AutoGuideRefreshMinutes { get; set; } = 720;
 }

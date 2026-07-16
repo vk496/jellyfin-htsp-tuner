@@ -42,8 +42,11 @@
                 </div>
                 <div class="inputContainer">
                     <label class="inputLabel inputLabelUnfocused" for="Profile">Streaming profile</label>
-                    <input is="emby-input" type="text" id="Profile" />
-                    <div class="fieldDescription">Tvheadend streaming profile passed to <code>subscribe</code>. Default <code>htsp</code>.</div>
+                    <!-- datalist, not a select: the suggestions come from the server, and a dropdown that
+                         fails to load would leave the field unsettable. This degrades to free text. -->
+                    <input is="emby-input" type="text" id="Profile" list="ProfileOptions" autocomplete="off" />
+                    <datalist id="ProfileOptions"></datalist>
+                    <div class="fieldDescription" id="ProfileHint">Tvheadend streaming profile passed to <code>subscribe</code>. Default <code>htsp</code>.</div>
                 </div>
                 <div class="inputContainer">
                     <label class="inputLabel inputLabelUnfocused" for="SubscriptionWeight">Subscription weight</label>
@@ -65,13 +68,28 @@
                     <h2 class="sectionTitle">Guide</h2>
                 </div>
                 <div class="checkboxContainer checkboxContainer-withDescription">
-                    <label><input is="emby-checkbox" type="checkbox" id="ImportChannelTags" /><span>Import Tvheadend channel tags as genres</span></label>
+                    <label><input is="emby-checkbox" type="checkbox" id="ImportChannelTags" /><span>Import Tvheadend channel tags</span></label>
+                    <div class="fieldDescription">
+                        Copies Tvheadend's channel groupings (Sports, HD, Kids&hellip;) onto the Jellyfin channels, where
+                        they can be queried as tags &mdash; Jellyfin has no genre field for channels. Applied on the next
+                        guide refresh.
+                    </div>
                 </div>
-                <div class="inputContainer">
-                    <label class="inputLabel inputLabelUnfocused" for="AutoGuideRefreshMinutes">Auto guide refresh (min)</label>
-                    <input is="emby-input" type="number" id="AutoGuideRefreshMinutes" min="0" max="1440" />
-                    <div class="fieldDescription">Tvheadend pushes EPG changes as they happen; refresh Jellyfin's guide at most this often in response. 0 = leave it to Jellyfin's own 24-hour schedule. Jellyfin can only refresh the whole guide at once and that takes minutes on a large channel list, so this is a rate limit — 60 is a sensible starting point.</div>
-                </div>
+                <details style="margin:0.5em 0 1em 0;">
+                    <summary style="cursor:pointer;opacity:.8;">Advanced</summary>
+                    <div class="inputContainer" style="margin-top:0.75em;">
+                        <label class="inputLabel inputLabelUnfocused" for="AutoGuideRefreshMinutes">Guide staleness before an EPG push may refresh (min)</label>
+                        <input is="emby-input" type="number" id="AutoGuideRefreshMinutes" min="0" max="10080" />
+                        <div class="fieldDescription">
+                            Tvheadend pushes EPG changes as they happen. Jellyfin cannot apply just the change — it only
+                            offers a full guide rebuild, which reads, diffs and rewrites every channel's programmes and
+                            takes many minutes on a large channel list. So this is a rate limit, not a poll: a push only
+                            triggers a refresh once the guide is at least this old. Default 720 (12 hours). 0 disables it
+                            and leaves the guide to Jellyfin's own schedule. Setting it low will queue refreshes
+                            back-to-back and keep your server busy for nothing.
+                        </div>
+                    </div>
+                </details>
 
                 <div id="htspStatus" style="margin:0.75em 0;min-height:1.2em;color:#7cb;"></div>
                 <div>
@@ -167,6 +185,21 @@
                 el.innerHTML = html + "</table>";
             }
 
+            // Offer the profiles this Tvheadend actually grants. Best-effort: a wrong profile name silently
+            // breaks tuning, but an unreachable server must not stop the field being edited.
+            function loadProfiles() {
+                ApiClient.getJSON(ApiClient.getUrl("HtspTuner/Profiles")).then(function (profiles) {
+                    if (!profiles || !profiles.length) { return; }
+                    document.getElementById("ProfileOptions").innerHTML = profiles.map(function (p) {
+                        return '<option value="' + esc(p.Name) + '">' +
+                            esc(p.Comment || p.Name) + "</option>";
+                    }).join("");
+                    document.getElementById("ProfileHint").innerHTML =
+                        "Profile passed to <code>subscribe</code>. " + profiles.length +
+                        " available on this server &mdash; click the field to choose.";
+                }).catch(function () { /* keep the static hint and free-text entry */ });
+            }
+
             function pollTuners() {
                 ApiClient.getJSON(ApiClient.getUrl("HtspTuner/Status"))
                     .then(renderTuners)
@@ -185,6 +218,7 @@
                     load(cfg);
                     Dashboard.hideLoadingMsg();
                 });
+                loadProfiles();
                 pollTuners();
                 pollTimer = setInterval(pollTuners, 5000);
             });

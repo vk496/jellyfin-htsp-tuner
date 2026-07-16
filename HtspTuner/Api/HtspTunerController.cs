@@ -124,6 +124,15 @@ public class HtspTunerController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     public ActionResult<IReadOnlyList<HtspTunerSnapshot>> GetStatus() => Ok(_tunerHost.GetTunerStatus());
 
+    /// <summary>Lists the streaming profiles the configured Tvheadend grants.</summary>
+    /// <remarks>Suggestions for the config page; empty when no tuner is set up or the server is unreachable.</remarks>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>The available profiles.</returns>
+    [HttpGet("Profiles")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<HtspProfile>>> GetProfiles(CancellationToken cancellationToken)
+        => Ok(await _tunerHost.GetProfilesAsync(cancellationToken).ConfigureAwait(false));
+
     /// <summary>Tests a Tvheadend connection with the given credentials.</summary>
     /// <param name="request">The connection details.</param>
     /// <returns>Whether it connected, and a message.</returns>
