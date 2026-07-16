@@ -62,7 +62,7 @@ internal sealed class TsMuxer
     public TsMuxer(HtspSubscriptionStart start)
     {
         int pid = FirstEsPid, tsIndex = 0, videoCount = 0, audioCount = 0;
-        foreach (var s in start.Streams)
+        foreach (var s in Ordered(start.Streams))
         {
             if (MapStreamType(s.Codec) is not { } streamType)
             {
@@ -88,6 +88,25 @@ internal sealed class TsMuxer
 
     /// <summary>Gets the streams that are actually muxed, in PMT order.</summary>
     public IReadOnlyList<TsStreamInfo> Streams => _streams;
+
+    /// <summary>
+    /// Emits video first, then audio, then everything else (subtitles, teletext), keeping Tvheadend's
+    /// relative order within each group so the first audio is still the broadcaster's default.
+    /// </summary>
+    /// <remarks>
+    /// We used to emit Tvheadend's order verbatim, which on some channels puts a teletext or subtitle
+    /// stream BETWEEN the video and the audio. Jellyfin addresses an audio track by its index in this
+    /// table — but a client that direct-plays the TS demuxes it itself, and one that skips a subtitle
+    /// codec it cannot decode numbers everything after it one lower. Then "play index 2" selects the
+    /// wrong track: on a channel with spa/qaa/audio-description, asking for Spanish plays English,
+    /// asking for English plays the description track, and asking for the last track selects nothing
+    /// and the stream dies. It reproduced on one TV and not another, purely on demuxer behaviour.
+    /// Keeping non-audio last means dropping it cannot renumber any audio track.
+    /// </remarks>
+    /// <param name="streams">The subscription's streams, in Tvheadend's order.</param>
+    /// <returns>The streams in emit order.</returns>
+    private static IEnumerable<HtspStream> Ordered(IEnumerable<HtspStream> streams)
+        => streams.OrderBy(s => s.IsVideo ? 0 : s.IsAudio ? 1 : 2);
 
     /// <summary>Writes the PAT and PMT. Called at start and periodically thereafter.</summary>
     /// <param name="output">The destination.</param>
