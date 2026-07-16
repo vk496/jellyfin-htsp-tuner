@@ -219,26 +219,47 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
         EnsureGuideProvider();
     }
 
+    // Records which lineup the guide is using. Jellyfin's web UI renders the "TV Guide Data Providers" list
+    // from a hardcoded switch on the provider type (getProviderName / getProviderConfigurationUrl), and no
+    // plugin can add itself to it: our rows are always titled "Unknown" and link nowhere. The one thing a
+    // plugin controls on that row is its subtitle -- `Path || ListingsId` -- so setting this is the
+    // difference between an anonymous "Unknown" row and one the user can recognise as ours.
+    internal const string LineupId = "htsp";
+
     private void EnsureGuideProvider()
     {
         try
         {
             var options = _config.GetConfiguration<LiveTvOptions>("livetv");
             var providers = options.ListingProviders?.ToList() ?? new List<ListingsProviderInfo>();
-            if (providers.Any(p => string.Equals(p.Type, Type, StringComparison.OrdinalIgnoreCase)))
+            var existing = providers.Find(p => string.Equals(p.Type, Type, StringComparison.OrdinalIgnoreCase));
+
+            if (existing is null)
+            {
+                providers.Add(new ListingsProviderInfo
+                {
+                    Id = Guid.NewGuid().ToString("N"),
+                    Type = Type, // "htsp"
+                    EnableAllTuners = true,
+                    ListingsId = LineupId,
+                });
+                _logger.LogInformation("Auto-registered the HTSP guide provider for all HTSP tuners");
+            }
+            else if (string.IsNullOrEmpty(existing.ListingsId))
+            {
+                // Registered by an older build that left the lineup blank, which renders as an unlabelled
+                // row. Backfill rather than leave it nameless forever -- this path is why the check above
+                // is not just an early return.
+                existing.ListingsId = LineupId;
+                _logger.LogInformation("Labelled the existing HTSP guide provider with its lineup");
+            }
+            else
             {
                 return;
             }
 
-            providers.Add(new ListingsProviderInfo
-            {
-                Id = Guid.NewGuid().ToString("N"),
-                Type = Type, // "htsp"
-                EnableAllTuners = true,
-            });
             options.ListingProviders = providers.ToArray();
             _config.SaveConfiguration("livetv", options);
-            _logger.LogInformation("Auto-registered the HTSP guide provider for all HTSP tuners");
         }
         catch (Exception ex)
         {

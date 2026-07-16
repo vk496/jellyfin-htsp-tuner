@@ -45,5 +45,8 @@ public sealed class HtspListingsProvider : IListingsProvider
 
     /// <inheritdoc/>
     public Task<List<NameIdPair>> GetLineups(ListingsProviderInfo info, string country, string location)
-        => Task.FromResult(new List<NameIdPair> { new() { Name = "Tvheadend HTSP", Id = "htsp" } });
+        => Task.FromResult(new List<NameIdPair>
+        {
+            new() { Name = "Tvheadend HTSP", Id = HtspTunerHost.LineupId },
+        });
 }
