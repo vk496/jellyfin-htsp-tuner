@@ -22,6 +22,7 @@ internal sealed class StreamRing : IDisposable
     private long _written;          // total bytes ever written (monotonic)
     private long _syncPoint = -1;   // offset of the most recent decoder entry point (PAT/PMT + key frame)
     private bool _completed;
+    private int _readers;           // readers currently open; the live stream's idle watchdog reads this
 
     /// <summary>Initializes a new instance of the <see cref="StreamRing"/> class.</summary>
     /// <param name="capacityBytes">The ring capacity in bytes; clamped to a sane minimum.</param>
@@ -29,6 +30,12 @@ internal sealed class StreamRing : IDisposable
     {
         _buffer = new byte[Math.Max(capacityBytes, 1 << 20)];
     }
+
+    /// <summary>
+    /// Gets the number of readers currently open. Zero means nothing is consuming this channel: the only
+    /// honest signal that a stream is abandoned, since Jellyfin does not always close what it opens.
+    /// </summary>
+    public int ActiveReaders => Volatile.Read(ref _readers);
 
     /// <summary>Gets the total number of bytes ever written to the ring.</summary>
     public long TotalWritten
@@ -142,12 +149,14 @@ internal sealed class StreamRing : IDisposable
     {
         private readonly StreamRing _ring;
         private long _cursor;
+        private bool _released;
 
         public RingReader(StreamRing ring)
         {
             _ring = ring;
             // Start at the most recent key-frame boundary so the decoder locks on immediately.
             _cursor = ring.NewReaderOffset();
+            Interlocked.Increment(ref ring._readers);
         }
 
         public override bool CanRead => true;
@@ -179,5 +188,18 @@ internal sealed class StreamRing : IDisposable
         public override void SetLength(long value) => throw new NotSupportedException();
 
         public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        // ASP.NET disposes the response stream when a consumer disconnects (ProgressiveFileStream.Dispose
+        // passes it on), so this is where "ffmpeg went away" actually surfaces.
+        protected override void Dispose(bool disposing)
+        {
+            if (!_released)
+            {
+                _released = true;
+                Interlocked.Decrement(ref _ring._readers);
+            }
+
+            base.Dispose(disposing);
+        }
     }
 }

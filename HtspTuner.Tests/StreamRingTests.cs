@@ -25,6 +25,28 @@ public class StreamRingTests
         Assert.Equal(marker, buf[..4]);       // the reader begins exactly at the sync point
     }
 
+    // The live stream's idle watchdog closes an abandoned subscription based on this count alone, so a
+    // reader that fails to release on dispose would keep a Tvheadend tuner busy forever.
+    [Fact]
+    public void Active_readers_tracks_open_readers_and_releases_on_dispose()
+    {
+        var ring = new StreamRing(1);
+        Assert.Equal(0, ring.ActiveReaders);
+
+        var a = ring.OpenReader();
+        var b = ring.OpenReader();
+        Assert.Equal(2, ring.ActiveReaders);
+
+        a.Dispose();
+        Assert.Equal(1, ring.ActiveReaders);
+
+        a.Dispose();                          // double dispose must not double-decrement
+        Assert.Equal(1, ring.ActiveReaders);
+
+        b.Dispose();
+        Assert.Equal(0, ring.ActiveReaders);
+    }
+
     [Fact]
     public void Overflow_drops_oldest_without_blocking()
     {

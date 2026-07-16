@@ -25,6 +25,13 @@ internal sealed class HtspLiveStream : ILiveStream, IDirectStreamProvider
     // viewing of a channel, so the first tune probes them and the rest reuse this — keyed by HTSP channel id.
     private static readonly ConcurrentDictionary<long, IReadOnlyList<MediaStream>> _probeCache = new();
 
+    // How long a stream may sit with nobody reading it before we tear the subscription down. Must clear the
+    // gap between Open() and the consumer actually connecting, which is ~20s on the Android TV client (it
+    // asks for PlaybackInfo, then starts ffmpeg). A paused/throttled consumer still holds its reader open,
+    // so it is not idle by this measure.
+    // ponytail: fixed grace, no config knob. Promote to PluginConfiguration if a slow client trips it.
+    private static readonly TimeSpan IdleTimeout = TimeSpan.FromSeconds(60);
+
     private readonly HtspClient _client;
     private readonly HtspSubscription _subscription;
     private readonly IMediaEncoder _mediaEncoder;
@@ -37,6 +44,8 @@ internal sealed class HtspLiveStream : ILiveStream, IDirectStreamProvider
     private readonly Lock _gate = new();
 
     private Task? _pump;
+    private Timer? _idleWatchdog;
+    private long _lastReaderTicks;
     private int _closed;
     private int _probeStarted;
 
@@ -188,7 +197,9 @@ internal sealed class HtspLiveStream : ILiveStream, IDirectStreamProvider
         // shared stream — so start the pump exactly once and then wait for real bytes before returning.
         lock (_gate)
         {
+            _lastReaderTicks = DateTime.UtcNow.Ticks;
             _pump ??= Task.Run(PumpAsync);
+            _idleWatchdog ??= new Timer(_ => CheckIdle(), null, IdleTimeout, TimeSpan.FromSeconds(10));
         }
 
         await _firstByte.Task.WaitAsync(TimeSpan.FromSeconds(15), openCancellationToken).ConfigureAwait(false);
@@ -213,11 +224,46 @@ internal sealed class HtspLiveStream : ILiveStream, IDirectStreamProvider
         }
 
         EnableStreamSharing = false;
+        _idleWatchdog?.Dispose();
         await _cts.CancelAsync().ConfigureAwait(false);
         await _client.UnsubscribeAsync(_subscription).ConfigureAwait(false);
         _ring.Dispose();
         _cts.Dispose();
         _logger.LogInformation("Closed HTSP live stream for channel {Channel}", ChannelId);
+    }
+
+    // Jellyfin does not reliably close what it opens: SessionManager only registers a live stream for
+    // closing when a session reports playback START, so a PlaybackInfo call that opens a stream and never
+    // plays it (the Android TV client does exactly one per tune) is never closed by any path — it just
+    // pumps a Tvheadend subscription, and a 100 MB ring, until the server restarts. Shared streams leak the
+    // same way: the mapping is keyed per session, so a second open on one session adds a consumer that no
+    // close ever removes, and the count sticks above zero forever.
+    //
+    // So do not trust the consumer count — trust the bytes. Nobody holding a reader means nobody is
+    // watching, whoever still thinks they are.
+    private void CheckIdle()
+    {
+        if (Volatile.Read(ref _closed) == 1)
+        {
+            return;
+        }
+
+        if (_ring.ActiveReaders > 0)
+        {
+            Volatile.Write(ref _lastReaderTicks, DateTime.UtcNow.Ticks);
+            return;
+        }
+
+        var idle = DateTime.UtcNow - new DateTime(Volatile.Read(ref _lastReaderTicks), DateTimeKind.Utc);
+        if (idle < IdleTimeout)
+        {
+            return;
+        }
+
+        _logger.LogInformation(
+            "Closing abandoned HTSP live stream for channel {Channel}: no consumer for {Seconds}s",
+            ChannelId, (int)idle.TotalSeconds);
+        _ = Close();
     }
 
     /// <inheritdoc/>
