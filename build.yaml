@@ -48,6 +48,14 @@ artifacts:
   - "HtspTuner.dll"
 
 # Only the current version's notes -- each release carries just its own changelog.
-changelog: >-
-  - Show where a channel is tuned from -- network, satellite position and mux (e.g.
-    "Hispasat (30W) . 12476H") -- in Jellyfin's playback media info.
+changelog: |-
+  - Fix playback dying when you turn on subtitles. DVB subtitles were reported under
+    ffmpeg's codec name, so Jellyfin mistook a picture subtitle for a text one and tried
+    to convert it to text before playing it. They are now burned in correctly.
+  - Stop leaving Tvheadend subscriptions running forever. Jellyfin does not always close
+    a stream it opened -- a channel could keep streaming and holding a tuner all night
+    after you stopped watching. A stream nobody is reading now closes itself after 60s.
+  - Stop piling up HTSP connections. Every Jellyfin restart stranded a connection that
+    stayed open, kept reconnecting, and kept re-downloading the whole guide; they are now
+    closed on shutdown.
+  - Label the auto-registered HTSP guide so it is identifiable in the guide provider list.
