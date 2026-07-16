@@ -9,6 +9,14 @@
         "imageUrl": "https://raw.githubusercontent.com/vk496/jellyfin-htsp-tuner/main/logo.png",
         "versions": [
             {
+                "version": "1.0.0.12",
+                "changelog": "- Fix playback dying when you turn on subtitles. DVB subtitles were reported under\n  ffmpeg's codec name, so Jellyfin mistook a picture subtitle for a text one and tried\n  to convert it to text before playing it. They are now burned in correctly.\n- Stop leaving Tvheadend subscriptions running forever. Jellyfin does not always close\n  a stream it opened -- a channel could keep streaming and holding a tuner all night\n  after you stopped watching. A stream nobody is reading now closes itself after 60s.\n- Stop piling up HTSP connections. Every Jellyfin restart stranded a connection that\n  stayed open, kept reconnecting, and kept re-downloading the whole guide; they are now\n  closed on shutdown.\n- Label the auto-registered HTSP guide so it is identifiable in the guide provider list.",
+                "targetAbi": "10.11.0.0",
+                "sourceUrl": "https://github.com/vk496/jellyfin-htsp-tuner/releases/download/v1.0.0.12/htsp-tuner_1.0.0.12.zip",
+                "checksum": "eb450c28b93fefe61255165c99ca9529",
+                "timestamp": "2026-07-16T15:29:41Z"
+            },
+            {
                 "version": "1.0.0.8",
                 "changelog": "- Show where a channel is tuned from -- network, satellite position and mux (e.g.\n  \"Hispasat (30W) . 12476H\") -- in Jellyfin's playback media info.",
                 "targetAbi": "10.11.0.0",
