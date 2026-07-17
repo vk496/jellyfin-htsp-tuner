@@ -66,7 +66,7 @@ internal sealed class TsMuxer
         {
             if (MapStreamType(s.Codec) is not { } streamType)
             {
-                continue; // TEXTSUB / PCR / unknown carry no TS payload
+                continue; // TEXTSUB / TELETEXT / PCR / unknown: see MapStreamType for why each is dropped
             }
 
             _streams.Add(new TsStreamInfo
@@ -141,6 +141,18 @@ internal sealed class TsMuxer
         _sinceHeaders++;
     }
 
+    // The PMT stream_type for each codec, or null to drop the stream entirely.
+    //
+    // Teletext is dropped ON PURPOSE (null), not for lack of a stream_type. Jellyfin cannot render DVB
+    // teletext subtitles through its transcode pipeline: its extraction command is `-c:s srt` with neither
+    // `-txt_format text` (libzvbi defaults to bitmap, which an srt encoder rejects) nor `-txt_page subtitle`
+    // (so it would dump every teletext page, not the subtitle one). Carrying the stream therefore only
+    // offers Jellyfin a subtitle track that breaks playback the instant it is selected -- confirmed against
+    // ffmpeg directly. Tvheadend's own m3u8 works because it runs its own teletext decoder server-side and
+    // does NOT hand us the result (the TEXTSUB stream carries 0 bytes over HTSP). Until Jellyfin passes the
+    // right flags, or we decode teletext ourselves, dropping it is the do-no-harm choice: a subtitle that
+    // silently isn't there beats one that errors. DVB *bitmap* subtitles (DvbSub) are kept -- those burn in
+    // fine. See README "Workarounds for Jellyfin limitations".
     private static byte? MapStreamType(HtspCodec codec) => codec switch
     {
         HtspCodec.H264 => 0x1B,
@@ -153,7 +165,6 @@ internal sealed class TsMuxer
         HtspCodec.Eac3 => 0x06,
         HtspCodec.Vorbis => 0x06,
         HtspCodec.DvbSub => 0x06,
-        HtspCodec.Teletext => 0x06,
         _ => null,
     };
 
@@ -254,14 +265,8 @@ internal sealed class TsMuxer
                 d.Add((byte)((s.AncillaryId ?? 0) >> 8));
                 d.Add((byte)((s.AncillaryId ?? 0) & 0xFF));
                 break;
-            case HtspCodec.Teletext:
-                // teletext_descriptor: lang(3) type/magazine(1) page(1)
-                d.Add(0x56);
-                d.Add(5);
-                d.AddRange(lang);
-                d.Add(0x08); // teletext_type 1 (initial page), magazine 0
-                d.Add(0x00);
-                break;
+
+            // No teletext case: teletext is dropped in MapStreamType, so it never reaches the PMT.
         }
 
         if (s.IsAudio)

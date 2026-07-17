@@ -21,14 +21,18 @@ public class StreamOrderTests
         Index = index, Codec = HtspCodec.Mpeg2Audio, RawType = "MPEG2AUDIO", Language = lang, Channels = channels,
     };
 
-    private static HtspStream Teletext(int index) => new()
+    // A DVB *bitmap* subtitle -- still carried, unlike teletext, and the case the ordering fix now guards.
+    private static HtspStream Subtitle(int index) => new()
     {
-        Index = index, Codec = HtspCodec.Teletext, RawType = "TELETEXT", Language = "spa",
+        Index = index, Codec = HtspCodec.DvbSub, RawType = "DVBSUB", Language = "spa",
+        CompositionId = 1, AncillaryId = 1,
     };
 
-    // Boing's real layout: Tvheadend hands us the teletext BETWEEN the video and the audio. Emitting that
-    // order verbatim made one TV play English when Spanish was selected, play the audio-description track
-    // when English was selected, and kill the stream on the last track — each selection landing one late.
+    // Boing's original bug was a subtitle Tvheadend put BETWEEN the video and the audio. Emitting that order
+    // verbatim made one TV play English when Spanish was selected, play the audio-description track when
+    // English was selected, and kill the stream on the last track — each selection landing one late. (Boing
+    // specifically was teletext, which is now dropped entirely, but any carried subtitle placed mid-stream
+    // would shift the audio the same way, so the ordering still has to hold.)
     [Fact]
     public void Subtitles_are_emitted_after_audio_even_when_tvheadend_puts_them_first()
     {
@@ -39,7 +43,7 @@ public class StreamOrderTests
             Streams = new List<HtspStream>
             {
                 Video(),
-                Teletext(2),          // <- Tvheadend's order puts this before the audio
+                Subtitle(2),          // <- Tvheadend's order puts this before the audio
                 Audio(3, "spa"),
                 Audio(4, "qaa"),
                 Audio(5, "spa", channels: 1),
@@ -63,7 +67,7 @@ public class StreamOrderTests
         {
             SubscriptionId = 1,
             Meta = new List<byte[]>(),
-            Streams = new List<HtspStream> { Video(), Teletext(2), Audio(3, "spa"), Audio(4, "qaa") },
+            Streams = new List<HtspStream> { Video(), Subtitle(2), Audio(3, "spa"), Audio(4, "qaa") },
         });
 
         var built = MediaStreamBuilder.Build(muxer.Streams);

@@ -45,17 +45,17 @@ public class SubtitleCodecTests
         Assert.False(subtitle.IsTextSubtitleStream);
     }
 
-    // Teletext is the opposite case, and the reason this is not just "subtitles are never text": ffmpeg
-    // decodes dvb_teletext to real text via libzvbi, so Jellyfin's DVBTXT genuinely IS a text format and
-    // the extract path is the correct one for it. Pinned so a future "fix" cannot lump the two together.
+    // Teletext is dropped entirely (TsMuxer.MapStreamType returns null for it), so it must never reach the
+    // published stream table at all. Jellyfin cannot render DVB teletext subtitles through its transcode
+    // pipeline, and offering one that breaks on selection is worse than offering none. If a future change
+    // re-adds it, this fails and sends you back to the muxer comment explaining why it went.
     [Fact]
-    public void Teletext_subtitles_are_reported_as_text()
+    public void Teletext_is_not_published_because_jellyfin_cannot_render_it()
     {
         var built = BuildFor(
             Video(),
             new HtspStream { Index = 2, Codec = HtspCodec.Teletext, RawType = "TELETEXT", Language = "spa" });
 
-        var subtitle = built.Single(s => s.Type == MediaStreamType.Subtitle);
-        Assert.True(subtitle.IsTextSubtitleStream);
+        Assert.DoesNotContain(built, s => s.Type == MediaStreamType.Subtitle);
     }
 }

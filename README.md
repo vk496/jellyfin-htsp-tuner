@@ -37,10 +37,11 @@ automatically.
   profile/level** — so Jellyfin makes correct direct-play, deinterlace and transcode decisions.
   This never opens a **second tuner subscription** (it reads bytes already buffered), and the
   result is cached per channel.
-- **Subtitle passthrough** — DVB subtitles and DVB teletext are carried through with the right
-  PMT descriptors and show up as selectable subtitle tracks.
+- **DVB bitmap subtitles** — carried through with the right PMT descriptors and burned in on
+  transcode. (DVB *teletext* subtitles are intentionally dropped — see *Workarounds* below.)
 - **Multiple audio tracks + languages** — every audio stream is exposed with its ISO-639
-  language and hearing/visually-impaired flags.
+  language, in a fixed video-then-audio order so clients cannot mis-number the tracks, and
+  audio-description tracks are labelled as such.
 - **Bounded in-memory buffer** — each channel is buffered in a fixed-size ring (default
   **100 MB**, configurable). When a client falls behind it drops the oldest data rather than
   filling the disk or stalling the tuner.
@@ -48,11 +49,42 @@ automatically.
   a fresh viewer joins at the last key frame for a clean, quick start.
 - **Radio channels** — audio-only services are surfaced as radio.
 - **Live EPG** — guide data is pushed over HTSP async metadata, not polled per channel.
-- **Recording** — Jellyfin's own DVR records the tuner stream, like any tuner. (Native Tvheadend
-  DVR — TVH timers and autorec rules — is implemented but not wired into the tuner-only model
-  yet.)
+- **Recording** — Jellyfin's own DVR records the tuner stream, like any tuner. (Tvheadend-native
+  DVR is intentionally not done: it would require an `ILiveTvService`, which cannot coexist with
+  this plugin's `ITunerHost` without listing every channel twice.)
+- **Live tuner status** — the settings page shows each active subscription: where it is tuned
+  (adapter / mux), signal quality, and dropped-frame counters.
 - **Channel tags**, **fast same-mux switching**, and a **Test connection** button on the
   settings page so a wrong host/credential shows in the UI instead of the log.
+
+## Workarounds for Jellyfin limitations
+
+A few things the plugin does deliberately, only because Jellyfin (server or web client) cannot
+currently handle the stream as-is. Each is a stopgap that should disappear if the matching gap is
+closed upstream — they are collected here so they are not mistaken for bugs.
+
+- **DVB teletext subtitles are dropped, not published.** Tvheadend carries them, but Jellyfin's
+  subtitle extraction runs ffmpeg with `-c:s srt` and neither `-txt_format text` (libzvbi defaults
+  to *bitmap* output, which an SRT encoder rejects) nor `-txt_page subtitle` (so it would dump
+  every teletext page). The result is that selecting a teletext subtitle **breaks playback**, on
+  any source, not just this plugin. Rather than offer a track that always errors, the muxer drops
+  teletext entirely. *Upstream fix:* have Jellyfin add those two flags when extracting a
+  `dvb_teletext` stream. DVB *bitmap* subtitles are unaffected and work normally.
+- **EPG artwork is proxied over HTSP.** Tvheadend reports programme (and channel) images as
+  `imagecache/<id>` paths, not URLs, which Jellyfin cannot fetch. The plugin serves them from its
+  own endpoint, reading the bytes over the HTSP connection it already holds — so no HTTP access to
+  Tvheadend is needed. *Upstream fix:* none needed; this is inherent to HTSP.
+- **Subtitle codec names are pre-normalised.** The plugin reports DVB subtitles as `DVBSUB`
+  (Jellyfin's own probe name) rather than ffmpeg's `dvb_subtitle`, because we bypass Jellyfin's
+  probe and it classifies the raw name as *text* — sending a bitmap subtitle down the text-extract
+  path and breaking it.
+- **The guide refresh is rate-limited, not event-driven.** Tvheadend pushes EPG changes live, but
+  Jellyfin only offers a full, all-channels guide rebuild (`IGuideManager.RefreshGuide`), which
+  takes minutes. So a push triggers a refresh at most once every N minutes (default 12 h, under
+  *Advanced*). *Upstream fix:* a per-channel guide-update API.
+- **The HTSP guide provider shows as "Unknown" in the UI.** Jellyfin-web hard-codes the names of
+  guide-provider types, so a plugin-supplied one has no label. The tuner side has no such problem.
+  *Upstream fix:* a `ListingProviders/Types` endpoint (prepared, pending upstream).
 
 ## Requirements
 
@@ -112,18 +144,17 @@ export JELLYFIN_URL=http://localhost:8096         # optional (this is the defaul
   AAC audio decode cleanly through Jellyfin (AAC is re-framed to ADTS).
 - Codec / geometry / language metadata from `subscriptionStart`, enriched by a one-time probe
   of our own output for interlacing, HDR/colour, bit depth and profile/level.
-- DVB subtitle + teletext passthrough; multiple audio tracks with languages.
-- Live EPG (tens of thousands of events), channel tags, radio channels.
+- DVB bitmap subtitle passthrough; multiple audio tracks with languages and a fixed track order.
+- Live EPG (tens of thousands of events) with programme artwork, channel tags, radio channels.
 - Tuner-device model with multiple tuners and auto-registered HTSP guide.
 - Stream sharing; surfacing Tvheadend errors (e.g. `noFreeAdapter`) as real failures instead
   of hanging.
 
 **Not done yet / rough edges:**
 
-- **Recording** goes through Jellyfin's own DVR (it records the tuner stream). Native Tvheadend
-  DVR (TVH timers/autorec, browsing TVH recordings) is implemented but not wired into the
-  tuner-only model yet.
-- A tuner/signal-status dashboard is not surfaced in the UI (the data is collected).
+- **Recording** goes through Jellyfin's own DVR (it records the tuner stream). Tvheadend-native
+  DVR is out of scope — see *Recording* under Features for why.
+- **DVB teletext subtitles** are dropped (Jellyfin cannot render them) — see *Workarounds*.
 - HEVC (incl. 4K HDR) remuxes and plays on HEVC-capable clients; **browsers cannot decode
   HEVC**, so those clients fall back to a server transcode — enable hardware transcoding for
   smooth 4K. Trick-play and thumbnails are left to the transcoder.
