@@ -1,6 +1,18 @@
-# Jellyfin HTSP Tuner
+<p align="center">
+  <img src="logo.png" alt="Jellyfin HTSP Tuner" width="450">
+</p>
 
-Native **HTSP** Live TV for Jellyfin, backed by [Tvheadend](https://tvheadend.org/).
+<h1 align="center">Jellyfin HTSP Tuner</h1>
+
+<p align="center">
+  Native <b>HTSP</b> Live TV for Jellyfin, backed by <a href="https://tvheadend.org/">Tvheadend</a>.
+</p>
+
+<p align="center">
+  <a href="https://github.com/vk496/jellyfin-htsp-tuner/releases"><img src="https://img.shields.io/github/v/release/vk496/jellyfin-htsp-tuner?color=00a4dc" alt="Release"></a>
+  <img src="https://img.shields.io/badge/Jellyfin-10.11%2B-00a4dc" alt="Jellyfin 10.11+">
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/vk496/jellyfin-htsp-tuner" alt="License"></a>
+</p>
 
 ## Why this plugin exists
 
