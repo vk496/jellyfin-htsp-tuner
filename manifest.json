@@ -9,6 +9,14 @@
         "imageUrl": "https://raw.githubusercontent.com/vk496/jellyfin-htsp-tuner/main/logo.png",
         "versions": [
             {
+                "version": "1.0.0.18",
+                "changelog": "- Fix EPG programme artwork, which never appeared before. Tvheadend sends those images\n  as a server path rather than a web address, which Jellyfin could not fetch; the plugin\n  now serves them over the HTSP connection it already holds.\n- Fix audio tracks being mis-selected on some TVs. On channels that carry a subtitle\n  between the video and the audio, picking \"Spanish\" could play English, or the wrong\n  track, or break the stream -- depending on the TV. Tracks are now ordered so this\n  cannot happen.\n- Label audio-description tracks. A description track (narration for the visually\n  impaired) is no longer offered as an unmarked, seemingly-muted audio option.\n- Drop DVB teletext subtitles, which Jellyfin cannot display and which broke playback the\n  moment they were selected. DVB bitmap subtitles are unaffected.\n- Import Tvheadend channel tags (Sports, HD, Kids...) onto the Jellyfin channels.\n- Show live tuner status on the settings page: what each tuner is watching, its signal,\n  and whether frames are being dropped.\n- Suggest the streaming profiles your Tvheadend actually offers instead of a blank box.\n- Optionally refresh Jellyfin's guide when Tvheadend pushes EPG changes (Advanced; off by\n  default), and expose the stream analyze duration for faster channel starts (Advanced).\n- Remove settings that never did anything (recording padding, DVR profile UUID).",
+                "targetAbi": "10.11.0.0",
+                "sourceUrl": "https://github.com/vk496/jellyfin-htsp-tuner/releases/download/v1.0.0.18/htsp-tuner_1.0.0.18.zip",
+                "checksum": "58251def6a5a3df952e20b9d4561fba2",
+                "timestamp": "2026-07-17T17:22:06Z"
+            },
+            {
                 "version": "1.0.0.12",
                 "changelog": "- Fix playback dying when you turn on subtitles. DVB subtitles were reported under\n  ffmpeg's codec name, so Jellyfin mistook a picture subtitle for a text one and tried\n  to convert it to text before playing it. They are now burned in correctly.\n- Stop leaving Tvheadend subscriptions running forever. Jellyfin does not always close\n  a stream it opened -- a channel could keep streaming and holding a tuner all night\n  after you stopped watching. A stream nobody is reading now closes itself after 60s.\n- Stop piling up HTSP connections. Every Jellyfin restart stranded a connection that\n  stayed open, kept reconnecting, and kept re-downloading the whole guide; they are now\n  closed on shutdown.\n- Label the auto-registered HTSP guide so it is identifiable in the guide provider list.",
                 "targetAbi": "10.11.0.0",
