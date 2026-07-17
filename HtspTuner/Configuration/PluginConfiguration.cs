@@ -36,6 +36,21 @@ public class PluginConfiguration : BasePluginConfiguration
     public int MaxBufferMb { get; set; } = 100;
 
     /// <summary>
+    /// Gets or sets how long, in milliseconds, ffmpeg analyses the stream before it starts playing it
+    /// (its <c>-analyzeduration</c>). Lower means a faster start; too low risks a mis-probe on an unusual
+    /// stream.
+    /// </summary>
+    /// <remarks>
+    /// Advanced. The default 2000 ms is already far below ffmpeg's 200-second default — that default made a
+    /// no-EOF live stream take minutes to start, which is why it is capped here. We can afford a low value
+    /// because Jellyfin never actually probes our stream (we hand it the full stream table) and the video is
+    /// remuxed, not re-encoded; this budget only covers ffmpeg confirming timestamps. Dropping it toward
+    /// ~1000 shaves about a second off the start; it is only part of the delay, most of which is Jellyfin's
+    /// own HLS segmenting, which this cannot touch. Clamped to 250..10000.
+    /// </remarks>
+    public int AnalyzeDurationMs { get; set; } = 2000;
+
+    /// <summary>
     /// Gets or sets the base URL Jellyfin uses to read the plugin's own live stream
     /// (its <c>/LiveTv/LiveStreamFiles/</c> endpoint). Leave empty to use loopback
     /// <c>http://127.0.0.1:&lt;port&gt;</c>, which is correct for the normal single-host setup and avoids

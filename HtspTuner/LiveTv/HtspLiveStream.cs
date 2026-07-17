@@ -102,7 +102,7 @@ internal sealed class HtspLiveStream : ILiveStream, IDirectStreamProvider
             // false also avoids ffmpeg's default 200s analyze on a no-EOF live stream — the old loading hang.
             SupportsProbing = false,
             SupportsTranscoding = true,
-            AnalyzeDurationMs = 2000,
+            AnalyzeDurationMs = Math.Clamp(Plugin.Instance?.Configuration.AnalyzeDurationMs ?? 2000, 250, 10000),
             MediaStreams = _streams,
         };
 

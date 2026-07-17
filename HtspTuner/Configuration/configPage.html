@@ -89,6 +89,16 @@
                             back-to-back and keep your server busy for nothing.
                         </div>
                     </div>
+                    <div class="inputContainer" style="margin-top:0.75em;">
+                        <label class="inputLabel inputLabelUnfocused" for="AnalyzeDurationMs">Stream analyze duration (ms)</label>
+                        <input is="emby-input" type="number" id="AnalyzeDurationMs" min="250" max="10000" />
+                        <div class="fieldDescription">
+                            How long ffmpeg inspects a channel before playing it. Lower = a channel starts faster;
+                            too low risks a bad start on an unusual stream. Default 2000. Most of the start delay is
+                            Jellyfin's own HLS buffering, which this does not affect — so expect at most about a
+                            second of improvement. Range 250–10000.
+                        </div>
+                    </div>
                 </details>
 
                 <div id="htspStatus" style="margin:0.75em 0;min-height:1.2em;color:#7cb;"></div>
@@ -117,7 +127,8 @@
         (function () {
             var pluginId = "48472334-959b-4838-a963-3a92e5a603d1";
             var fields = ["Host", "HtspPort", "Username", "Password", "Profile",
-                "SubscriptionWeight", "MaxBufferMb", "StreamBaseUrl", "AutoGuideRefreshMinutes"];
+                "SubscriptionWeight", "MaxBufferMb", "StreamBaseUrl", "AutoGuideRefreshMinutes",
+                "AnalyzeDurationMs"];
             var checks = ["ImportChannelTags"];
 
             function load(cfg) {
@@ -135,6 +146,7 @@
                 cfg.SubscriptionWeight = parseInt(document.getElementById("SubscriptionWeight").value, 10);
                 cfg.MaxBufferMb = parseInt(document.getElementById("MaxBufferMb").value, 10);
                 cfg.AutoGuideRefreshMinutes = parseInt(document.getElementById("AutoGuideRefreshMinutes").value, 10) || 0;
+                cfg.AnalyzeDurationMs = parseInt(document.getElementById("AnalyzeDurationMs").value, 10) || 2000;
                 checks.forEach(function (f) { cfg[f] = document.getElementById(f).checked; });
                 return cfg;
             }
