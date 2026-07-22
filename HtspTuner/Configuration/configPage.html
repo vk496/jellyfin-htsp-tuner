@@ -318,7 +318,10 @@
                         "<td>" + esc(r.ChannelName || r.ChannelId) +
                             (r.Status ? ' <span style="color:#e88;">(' + esc(r.Status) + ")</span>" : "") + "</td>" +
                         "<td>" + esc(r.Adapter || "&mdash;") + (r.Mux ? " &middot; " + esc(r.Mux) : "") + "</td>" +
-                        "<td>" + fmtLevel(sig.Signal, sig.SignalScale) + "</td>" +
+                        // Tvheadend reports a lock state for every input but numeric levels only for some,
+                        // so a tuner with no figures still has something worth showing rather than a dash.
+                        "<td>" + (sig.Signal != null ? fmtLevel(sig.Signal, sig.SignalScale)
+                                  : (sig.Status ? esc(sig.Status) : "&mdash;")) + "</td>" +
                         "<td>" + fmtLevel(sig.Snr, sig.SnrScale) + "</td>" +
                         '<td style="color:' + (bad ? "#e88" : "inherit") + ';">' +
                             (q.IdropCount || 0) + " / " + (q.PdropCount || 0) + " / " + (q.BdropCount || 0) + "</td>" +
