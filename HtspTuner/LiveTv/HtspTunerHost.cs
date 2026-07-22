@@ -583,8 +583,12 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
     /// The channel logo to stamp into the corner, as a local file Jellyfin already holds, or null for none.
     /// </param>
     /// <param name="cancellationToken">A cancellation token.</param>
-    /// <returns>The path to a temporary image file, which the caller owns and must delete, or null.</returns>
-    internal async Task<string?> CaptureFrameAsync(
+    /// <returns>
+    /// The path to a temporary image file, which the caller owns and must delete, or the reason there is
+    /// none. Callers report the reason: on a large lineup most channels can fail for one shared cause (a
+    /// login without access, a dish pointed elsewhere) and "no thumbnails appeared" does not say which.
+    /// </returns>
+    internal async Task<FrameCapture> CaptureFrameAsync(
         string channelId, string? logoPath, CancellationToken cancellationToken)
     {
         var live = _live.GetValueOrDefault(channelId);
@@ -611,7 +615,8 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
                 var client = await ClientForAsync(tuner, ct).ConfigureAwait(false);
                 if (client.GetChannel(tvhChannelId)?.IsRadio != false)
                 {
-                    return null; // no video to grab, and an unknown channel is not worth tuning
+                    // no video to grab, and an unknown channel is not worth tuning
+                    return FrameCapture.Failed("radio or unknown channel");
                 }
 
                 // Tuner priority is entirely Tvheadend's to decide, and weight is the only lever HTSP gives
@@ -624,11 +629,9 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
                 var weight = OptionsFor(tuner).SubscriptionWeight;
                 if (weight <= CaptureWeight)
                 {
-                    _logger.LogDebug(
-                        "Skipping frame capture: the tuner's subscription weight ({Weight}) is not above the "
-                        + "capture weight ({Capture}), so a viewer could not take the tuner back",
-                        weight, CaptureWeight);
-                    return null;
+                    return FrameCapture.Failed(
+                        "the tuner's subscription weight is not above the capture weight, so a viewer "
+                        + "could not take the tuner back");
                 }
 
                 // A separate, much shorter budget for the tune itself. HtspSubscription gives a channel 20s
@@ -655,14 +658,18 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
                 live = owned;
             }
 
-            return await ExtractFrameAsync(live, logoPath, ct).ConfigureAwait(false);
+            var path = await ExtractFrameAsync(live, logoPath, ct).ConfigureAwait(false);
+            return path is null ? FrameCapture.Failed("no frame could be decoded") : new FrameCapture(path, null);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            // Running out of budget is the ordinary outcome for a channel that will not tune, so it reads as
-            // "no frame" like any other failure; only the caller cancelling propagates.
+            // Running out of budget is the ordinary outcome for a channel that will not tune.
+            return FrameCapture.Failed("timed out tuning the channel");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
             _logger.LogDebug(ex, "Could not capture a frame from channel {Channel}", channelId);
-            return null;
+            return FrameCapture.Failed(ex.Message);
         }
         finally
         {

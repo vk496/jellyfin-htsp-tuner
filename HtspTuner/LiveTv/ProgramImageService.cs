@@ -136,24 +136,33 @@ internal sealed class ProgramImageService : BackgroundService
 
         var started = DateTime.UtcNow;
         var captured = 0;
+        var reasons = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (var (program, channel) in work)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (await TryCaptureAsync(program, channel.Id, channel.Logo, cancellationToken).ConfigureAwait(false))
+            var error = await TryCaptureAsync(program, channel.Id, channel.Logo, cancellationToken)
+                .ConfigureAwait(false);
+            if (error is null)
             {
                 captured++;
             }
             else
             {
                 _cooldown[channel.Id] = DateTime.UtcNow + FailureCooldown;
+                reasons[error] = reasons.GetValueOrDefault(error) + 1;
             }
         }
 
-        // Worth one line at Information: this is background work on the tuners, and without it the only
-        // evidence a sweep happened is thumbnails quietly appearing.
+        // One line at Information per sweep, with why the failures failed. This is background work on the
+        // tuners and the only other evidence it ran is thumbnails quietly appearing -- and when most of a
+        // lineup fails it is usually for one shared reason (a login without access to those channels, a dish
+        // pointed elsewhere), which "nothing appeared" does not tell anyone.
+        var why = reasons.Count == 0
+            ? string.Empty
+            : "; failures: " + string.Join(", ", reasons.OrderByDescending(r => r.Value).Select(r => $"{r.Value}x {r.Key}"));
         _logger.LogInformation(
-            "Captured {Captured} of {Total} missing programme images in {Seconds}s",
-            captured, work.Count, (int)(DateTime.UtcNow - started).TotalSeconds);
+            "Captured {Captured} of {Total} missing programme images in {Seconds}s{Why}",
+            captured, work.Count, (int)(DateTime.UtcNow - started).TotalSeconds, why);
     }
 
     // Fisher-Yates over a copy. Random.Shared is fine here: this only decides which thumbnails get taken
@@ -185,13 +194,14 @@ internal sealed class ProgramImageService : BackgroundService
             .OrderBy(x => muxOf(x) is null ? 1 : 0)
             .ThenBy(muxOf, StringComparer.Ordinal);
 
-    private async Task<bool> TryCaptureAsync(
+    // Returns null on success, or why no image was stored.
+    private async Task<string?> TryCaptureAsync(
         BaseItem program, string channelId, string? logoPath, CancellationToken cancellationToken)
     {
-        var image = await _host.CaptureFrameAsync(channelId, logoPath, cancellationToken).ConfigureAwait(false);
-        if (image is null)
+        var result = await _host.CaptureFrameAsync(channelId, logoPath, cancellationToken).ConfigureAwait(false);
+        if (result.Path is not { } image)
         {
-            return false;
+            return result.Error ?? "unknown";
         }
 
         try
@@ -212,7 +222,7 @@ internal sealed class ProgramImageService : BackgroundService
             // every programme we capture for — so this can be undone by a refresh. That is what makes the
             // scan a loop rather than a one-off: it simply takes the picture again on the next pass.
             _logger.LogDebug("Captured a thumbnail for \"{Program}\" from {Channel}", program.Name, channelId);
-            return true;
+            return null;
         }
         finally
         {
