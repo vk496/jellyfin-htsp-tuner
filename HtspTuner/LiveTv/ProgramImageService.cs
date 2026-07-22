@@ -103,6 +103,11 @@ public sealed class ProgramImageService : BackgroundService
 
             try
             {
+                if (!AutomaticSweepsEnabled)
+                {
+                    continue;
+                }
+
                 await _sweeping.WaitAsync(stoppingToken).ConfigureAwait(false);
                 try
                 {
@@ -164,8 +169,15 @@ public sealed class ProgramImageService : BackgroundService
         return true;
     }
 
+    // Zero switches automatic sweeps off; the button on the settings page still works. The wait itself is
+    // short in that case, because it is only there to notice the setting being turned back on.
     private static TimeSpan ScanInterval()
-        => TimeSpan.FromSeconds(Math.Clamp(Plugin.Instance?.Configuration.ProgramImageScanSeconds ?? 61, 15, 3600));
+    {
+        var seconds = Plugin.Instance?.Configuration.ProgramImageScanSeconds ?? 181;
+        return seconds <= 0 ? TimeSpan.FromSeconds(30) : TimeSpan.FromSeconds(Math.Clamp(seconds, 15, 3600));
+    }
+
+    private static bool AutomaticSweepsEnabled => (Plugin.Instance?.Configuration.ProgramImageScanSeconds ?? 181) > 0;
 
     private async Task ScanAsync(CancellationToken cancellationToken)
     {

@@ -87,7 +87,10 @@ public class PluginConfiguration : BasePluginConfiguration
     /// </remarks>
     public int ProgramImageCandidates { get; set; } = 60;
 
-    /// <summary>Gets or sets how often, in seconds, the plugin looks for programmes that need a picture.</summary>
+    /// <summary>
+    /// Gets or sets how often, in seconds, the plugin looks for programmes that need a picture. Zero turns
+    /// automatic sweeps off, leaving only the button on the settings page.
+    /// </summary>
     /// <remarks>
     /// This is a scan interval, not a capture rate, and it is the gap between sweeps rather than a rate to
     /// keep up with -- a sweep that runs long is never followed immediately by another. A sweep that finds
@@ -113,14 +116,21 @@ public class PluginConfiguration : BasePluginConfiguration
     public int ProgramImageLogoMarginPercent { get; set; } = 3;
 
     /// <summary>
-    /// Gets or sets the opacity of the drop shadow behind the channel logo, as a percentage. Zero removes it.
+    /// Gets or sets how black the disc drawn behind the channel logo is, as a percentage. Zero draws the
+    /// logo bare.
     /// </summary>
     /// <remarks>
-    /// Worth keeping: a logo is dropped onto whatever the broadcast happened to be showing, so without a
-    /// shadow a dark or busy frame swallows its edges. The blur and offset scale with the logo, so they need
-    /// no settings of their own.
+    /// A still from a live broadcast can be anything at all behind the corner where the logo goes, so the
+    /// logo needs something to sit on rather than just an outline. The disc is solid out to the logo's own
+    /// corner and fades to nothing beyond it.
     /// </remarks>
-    public int ProgramImageLogoShadowPercent { get; set; } = 75;
+    public int ProgramImageLogoBackdropPercent { get; set; } = 85;
+
+    /// <summary>
+    /// Gets or sets how far the disc behind the logo fades out past the logo's corner, as a percentage of
+    /// the solid part. 100 is a hard-edged disc.
+    /// </summary>
+    public int ProgramImageLogoBackdropSpread { get; set; } = 125;
 
     /// <summary>
     /// Gets or sets how long, in minutes, a channel that failed to produce a frame is skipped for. Zero

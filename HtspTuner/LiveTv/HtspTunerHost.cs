@@ -820,36 +820,28 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
         try
         {
             var margin = cfg.ProgramImageLogoMarginPercent / 100d;
-            var alpha = Math.Clamp(cfg.ProgramImageLogoShadowPercent / 100d, 0, 1);
+            var opacity = Math.Clamp(cfg.ProgramImageLogoBackdropPercent / 100d, 0, 1);
+            var spread = Math.Max(1.0, cfg.ProgramImageLogoBackdropSpread / 100d);
 
             // The logo is the one thing that needs a pixel size: ffmpeg's scale filter has no way to express
-            // "a share of that other input". Everything after it is relative to its own input, so the shadow
-            // and the placement stay correct whatever the frame turns out to be.
+            // "a share of that other input". Everything after it is relative to its own input, so the
+            // placement stays correct whatever the frame turns out to be.
             var logoWidth = Math.Max(16, (int)Math.Round(frameWidth * size));
-
-            // The blurred copy is PAD bigger on each side so the blur has room to spread past the logo edge.
-            // That makes it a different size from the logo, so it cannot be anchored the same way: pulling it
-            // back by the padding (0.25/1.5 of its own width) is what lines the two up again, and the small
-            // extra nudge is what makes it read as a cast shadow rather than a halo.
-            const double Pad = 0.25;
-            const double Nudge = 0.004;
-            var back = Pad / (1 + 2 * Pad);
-            var shadowInset = margin - Nudge;
 
             // Every capture is placed the same way. Which card shape Jellyfin will use is decided by the web
             // client per section when it renders -- a portrait card crops a 16:9 frame to its middle third and
             // takes a corner logo with it -- and nothing on the item says which section it will appear in, or
             // stops it appearing in several. So there is nothing to detect, and one consistent placement beats
             // a special case that would only be right some of the time.
-            var filter = string.Create(
-                CultureInfo.InvariantCulture,
-                $"[1:v]format=rgba,scale={logoWidth}:-1,split[l1][l2];"
-                + $"[l1]pad=iw*{1 + 2 * Pad}:ih*{1 + 2 * Pad}:iw*{Pad}:ih*{Pad}:color=#00000000,"
-                + $"colorchannelmixer=rr=0:gg=0:bb=0:aa={alpha},"
-                + $"boxblur=luma_radius=w*0.03:luma_power=2:alpha_radius=w*0.03:alpha_power=2[sh];"
-                + $"[0:v][sh]overlay=x=main_w-overlay_w*{1 - back}-main_w*{shadowInset}"
-                + $":y=main_h-overlay_h*{1 - back}-main_w*{shadowInset}[t];"
-                + $"[t][l2]overlay=x=main_w-overlay_w-main_w*{margin}:y=main_h-overlay_h-main_w*{margin}[o]");
+            var place = FormattableString.Invariant(
+                $"overlay=x=main_w-overlay_w-main_w*{margin}:y=main_h-overlay_h-main_w*{margin}");
+
+            var backdrop = BackdropFilter(logoPath, logoWidth, opacity, spread);
+            var filter = backdrop is null
+                ? string.Create(CultureInfo.InvariantCulture, $"[1:v]format=rgba,scale={logoWidth}:-1[lg];[0:v][lg]{place}[o]")
+                : string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"[1:v]format=rgba,scale={logoWidth}:-1[lg];{backdrop}[0:v][disc]{place.Replace("[o]", string.Empty, StringComparison.Ordinal)}[bg];[bg][lg]{place}[o]");
 
             var psi = new System.Diagnostics.ProcessStartInfo(_mediaEncoder.EncoderPath)
             {
@@ -887,6 +879,35 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
             TryDelete(outPath);
             return null;
         }
+    }
+
+    // A black disc behind the logo: solid out to the logo's own corner, then fading to nothing. A drop
+    // shadow only outlines a logo, which is not enough on a frame that happens to be dark or busy behind it
+    // -- and a still from a live broadcast can be anything at all. Returns null if the logo's dimensions
+    // cannot be read, in which case the logo is drawn bare rather than on a mis-sized disc.
+    private static string? BackdropFilter(string logoPath, int logoWidth, double opacity, double spread)
+    {
+        if (opacity <= 0 || ImageSize.Read(logoPath) is not { } intrinsic || intrinsic.Width <= 0)
+        {
+            return null;
+        }
+
+        var logoHeight = Math.Max(1, (int)Math.Round(logoWidth * (double)intrinsic.Height / intrinsic.Width));
+
+        // Solid to the logo's corner, with a hair of margin, then fading out to spread times that. A gradient
+        // that starts at the centre instead leaves the logo sitting on almost nothing, which defeats it.
+        var solid = Math.Sqrt((logoWidth * (double)logoWidth) + (logoHeight * (double)logoHeight)) / 2 * 1.05;
+        var edge = solid * spread;
+        var canvas = ((int)Math.Round(edge * 2)) | 1;
+
+        // ponytail: the fade curve is fixed. It shapes how abruptly the disc gives way, which is a look
+        // rather than something that needs to suit a particular setup; the two knobs that do are settings.
+        const double Falloff = 1.6;
+
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"color=black:s={canvas}x{canvas},format=rgba,"
+            + $"geq=r=0:g=0:b=0:a='255*{opacity}*pow(clip(({edge}-hypot(X-{canvas}/2,Y-{canvas}/2))/({edge}-{solid}),0,1),{Falloff})'[disc];");
     }
 
     /// <summary>Deletes a temporary file, ignoring the usual reasons it might not be there.</summary>
