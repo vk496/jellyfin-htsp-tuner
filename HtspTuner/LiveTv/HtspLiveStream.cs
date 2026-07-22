@@ -337,7 +337,7 @@ internal sealed class HtspLiveStream : ILiveStream, IDirectStreamProvider
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeout.CancelAfter(TimeSpan.FromSeconds(6));
 
-            var captured = await CaptureForProbeAsync(probePath, timeout.Token).ConfigureAwait(false);
+            var captured = await CaptureSampleAsync(probePath, timeout.Token).ConfigureAwait(false);
 
             var info = await _mediaEncoder.GetMediaInfo(
                 new MediaInfoRequest
@@ -377,7 +377,15 @@ internal sealed class HtspLiveStream : ILiveStream, IDirectStreamProvider
         }
     }
 
-    private async Task<int> CaptureForProbeAsync(string path, CancellationToken ct)
+    /// <summary>Writes a short, self-contained slice of the live TS to a file.</summary>
+    /// <remarks>
+    /// Reading the ring costs nothing extra: the bytes are already buffered, so a caller that only needs a
+    /// few seconds of this channel (metadata probe, thumbnail grab) never opens a second subscription.
+    /// </remarks>
+    /// <param name="path">The file to write.</param>
+    /// <param name="ct">A cancellation token; also the caller's time budget.</param>
+    /// <returns>The number of bytes written.</returns>
+    internal async Task<int> CaptureSampleAsync(string path, CancellationToken ct)
     {
         // A couple of GOPs is enough for ffprobe to read the SPS/VPS and detect field order; the ring reader
         // starts at the last sync point (PAT/PMT + key frame), so the capture is self-contained.

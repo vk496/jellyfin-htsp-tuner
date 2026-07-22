@@ -61,6 +61,13 @@ automatically.
   a fresh viewer joins at the last key frame for a clean, quick start.
 - **Radio channels** — audio-only services are surfaced as radio.
 - **Live EPG** — guide data is pushed over HTSP async metadata, not polled per channel.
+- **Programme images from the broadcast** — broadcasters supply artwork for only a small share of
+  programmes, which is what leaves the Live TV home page full of blank placeholder tiles. Every
+  minute the plugin takes a still frame off the channel for a few of the programmes on air that
+  have no picture. A channel someone is already watching is sampled from the buffer already in
+  memory, so Tvheadend never sees it; anything else is tuned at the **lowest subscription weight**,
+  so a real viewer always wins a contended tuner. Scoped by default to exactly the set of
+  programmes Jellyfin's home page picks from, and configurable.
 - **Recording** — Jellyfin's own DVR records the tuner stream, like any tuner. (Tvheadend-native
   DVR is intentionally not done: it would require an `ILiveTvService`, which cannot coexist with
   this plugin's `ITunerHost` without listing every channel twice.)

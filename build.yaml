@@ -49,21 +49,10 @@ artifacts:
 
 # Only the current version's notes -- each release carries just its own changelog.
 changelog: |-
-  - Fix EPG programme artwork, which never appeared before. Tvheadend sends those images
-    as a server path rather than a web address, which Jellyfin could not fetch; the plugin
-    now serves them over the HTSP connection it already holds.
-  - Fix audio tracks being mis-selected on some TVs. On channels that carry a subtitle
-    between the video and the audio, picking "Spanish" could play English, or the wrong
-    track, or break the stream -- depending on the TV. Tracks are now ordered so this
-    cannot happen.
-  - Label audio-description tracks. A description track (narration for the visually
-    impaired) is no longer offered as an unmarked, seemingly-muted audio option.
-  - Drop DVB teletext subtitles, which Jellyfin cannot display and which broke playback the
-    moment they were selected. DVB bitmap subtitles are unaffected.
-  - Import Tvheadend channel tags (Sports, HD, Kids...) onto the Jellyfin channels.
-  - Show live tuner status on the settings page: what each tuner is watching, its signal,
-    and whether frames are being dropped.
-  - Suggest the streaming profiles your Tvheadend actually offers instead of a blank box.
-  - Optionally refresh Jellyfin's guide when Tvheadend pushes EPG changes (Advanced; off by
-    default), and expose the stream analyze duration for faster channel starts (Advanced).
-  - Remove settings that never did anything (recording padding, DVR profile UUID).
+  - Fill in missing programme images from the broadcast itself. Most programmes come with no
+    artwork, which is what leaves the Live TV home page full of blank placeholder tiles;
+    every minute the plugin now grabs a still frame off the channel for a few of the
+    programmes on air that have none. A channel someone is already watching is sampled from
+    the buffer already in memory, so Tvheadend never sees it, and anything that does need
+    tuning subscribes at the lowest weight, so a viewer always wins a contended tuner. On by
+    default, and scoped to the programmes the home page actually shows; both are settings.

@@ -66,6 +66,29 @@ public class PluginConfiguration : BasePluginConfiguration
     public bool ImportChannelTags { get; set; } = true;
 
     /// <summary>
+    /// Gets or sets a value indicating whether programmes with no artwork get a still frame captured from
+    /// the live broadcast, so the Live TV home page shows pictures instead of blank placeholder tiles.
+    /// </summary>
+    /// <remarks>
+    /// Only what is on air right now is considered, a few channels per minute, and a channel already being
+    /// watched is sampled from the stream we are holding rather than tuned again. Anything that does have to
+    /// tune subscribes at the lowest weight Tvheadend accepts, so a viewer always wins a contended tuner.
+    /// </remarks>
+    public bool CaptureProgramImages { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets how many airing programmes each scan considers, newest start date first. Zero means
+    /// every programme currently on air.
+    /// </summary>
+    /// <remarks>
+    /// The default matches the pool Jellyfin's Live TV home page draws its "On Now" row from, so this covers
+    /// what is on screen and nothing else. It is also what keeps the feature proportional to a large
+    /// Tvheadend: a server can carry thousands of channels, and a still frame is only worth taking for
+    /// programmes somebody is going to look at. Raise it to reach further down the guide.
+    /// </remarks>
+    public int ProgramImageCandidates { get; set; } = 200;
+
+    /// <summary>
     /// Gets or sets the minimum age, in minutes, before a Tvheadend EPG push may trigger a Jellyfin guide
     /// refresh. Zero disables it entirely, leaving the guide to Jellyfin's own schedule.
     /// </summary>

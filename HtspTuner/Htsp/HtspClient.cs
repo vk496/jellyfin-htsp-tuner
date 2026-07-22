@@ -113,15 +113,21 @@ internal sealed class HtspClient : IAsyncDisposable
     /// <summary>Subscribes to a channel and waits for the stream table.</summary>
     /// <param name="channelId">The channel id.</param>
     /// <param name="cancellationToken">A cancellation token.</param>
+    /// <param name="weight">
+    /// Overrides the configured subscription weight. Tvheadend hands a contended tuner to the heavier
+    /// subscription, so background work (a thumbnail grab) passes a low weight to guarantee it is the one
+    /// dropped when someone actually wants to watch.
+    /// </param>
     /// <returns>The started subscription.</returns>
-    public async Task<HtspSubscription> SubscribeAsync(long channelId, CancellationToken cancellationToken)
+    public async Task<HtspSubscription> SubscribeAsync(
+        long channelId, CancellationToken cancellationToken, int? weight = null)
     {
         var id = Interlocked.Increment(ref _nextSubscriptionId);
         var sub = new HtspSubscription(_connection, id, _logger);
         _subscriptions[id] = sub;
         try
         {
-            await sub.StartAsync(channelId, _options.SubscriptionWeight, _options.Profile, cancellationToken)
+            await sub.StartAsync(channelId, weight ?? _options.SubscriptionWeight, _options.Profile, cancellationToken)
                 .ConfigureAwait(false);
             return sub;
         }

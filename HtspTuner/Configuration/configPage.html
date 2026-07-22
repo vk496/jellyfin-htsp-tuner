@@ -75,6 +75,26 @@
                         guide refresh.
                     </div>
                 </div>
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label><input is="emby-checkbox" type="checkbox" id="CaptureProgramImages" /><span>Capture missing programme images from the broadcast</span></label>
+                    <div class="fieldDescription">
+                        Most programmes come with no artwork, which is why the Live TV home page is mostly blank
+                        placeholder tiles. Every minute, a few of the programmes on air right now that have no picture get
+                        a still frame grabbed from the channel itself. A channel someone is already watching is sampled
+                        from the stream already open, costing Tvheadend nothing; anything else is tuned at the lowest
+                        subscription weight, so a viewer always wins a contended tuner.
+                    </div>
+                </div>
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="ProgramImageCandidates">Programmes considered per scan</label>
+                    <input is="emby-input" type="number" id="ProgramImageCandidates" min="0" max="10000" />
+                    <div class="fieldDescription">
+                        Default <code>200</code>, which is exactly the pool the Live TV home page picks its "On Now"
+                        row from &mdash; so captures go to what you can actually see. Raise it to reach further down
+                        the guide. <code>0</code> means every programme on air, which on a Tvheadend carrying thousands
+                        of channels means it will spend all day tuning them.
+                    </div>
+                </div>
                 <details style="margin:0.5em 0 1em 0;">
                     <summary style="cursor:pointer;opacity:.8;">Advanced</summary>
                     <div class="inputContainer" style="margin-top:0.75em;">
@@ -128,8 +148,8 @@
             var pluginId = "48472334-959b-4838-a963-3a92e5a603d1";
             var fields = ["Host", "HtspPort", "Username", "Password", "Profile",
                 "SubscriptionWeight", "MaxBufferMb", "StreamBaseUrl", "AutoGuideRefreshMinutes",
-                "AnalyzeDurationMs"];
-            var checks = ["ImportChannelTags"];
+                "AnalyzeDurationMs", "ProgramImageCandidates"];
+            var checks = ["ImportChannelTags", "CaptureProgramImages"];
 
             function load(cfg) {
                 fields.forEach(function (f) { document.getElementById(f).value = cfg[f] == null ? "" : cfg[f]; });
@@ -147,6 +167,7 @@
                 cfg.MaxBufferMb = parseInt(document.getElementById("MaxBufferMb").value, 10);
                 cfg.AutoGuideRefreshMinutes = parseInt(document.getElementById("AutoGuideRefreshMinutes").value, 10) || 0;
                 cfg.AnalyzeDurationMs = parseInt(document.getElementById("AnalyzeDurationMs").value, 10) || 2000;
+                cfg.ProgramImageCandidates = parseInt(document.getElementById("ProgramImageCandidates").value, 10) || 0;
                 checks.forEach(function (f) { cfg[f] = document.getElementById(f).checked; });
                 return cfg;
             }

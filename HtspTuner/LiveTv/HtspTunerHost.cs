@@ -25,7 +25,8 @@ namespace HtspTuner.LiveTv;
 /// </remarks>
 public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposable
 {
-    private const string Prefix = "htsp_";
+    /// <summary>Prefix every channel id this host issues carries; it is how our channels are recognised.</summary>
+    internal const string ChannelIdPrefix = "htsp_";
 
     // Jellyfin's own guide-refresh task. Matched by key because the type lives in the server's
     // Jellyfin.LiveTv assembly, which is not on NuGet, so the generic ITaskManager overloads that every
@@ -39,6 +40,15 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
     private readonly ILogger<HtspTunerHost> _logger;
     private readonly ConcurrentDictionary<string, HtspClient> _clients = new();
     private readonly ConcurrentDictionary<string, (byte[] Data, string ContentType)> _iconCache = new();
+
+    // Streams we handed to Jellyfin, so background work can piggy-back on a channel someone is already
+    // watching instead of tuning it again. Jellyfin passes its own list to GetChannelStream but there is no
+    // way to ask for it, so we keep our own; entries are pruned by IsAlive rather than on close.
+    private readonly ConcurrentDictionary<string, HtspLiveStream> _live = new();
+
+    // Last mux each channel was seen on, learned from subscriptionStart. Only used to order background
+    // captures so consecutive ones share a mux, which Tvheadend can serve without re-tuning.
+    private readonly ConcurrentDictionary<string, string> _muxByChannel = new();
     private readonly SemaphoreSlim _clientLock = new(1, 1);
     private readonly Lock _refreshGate = new();
 
@@ -159,6 +169,7 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
             OriginalStreamId = channelId,
         };
         await stream.Open(cancellationToken).ConfigureAwait(false);
+        Remember(channelId, stream);
         return stream;
     }
 
@@ -356,7 +367,7 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
             .OrderBy(c => c.Number == 0 ? int.MaxValue : c.Number)
             .Select(c =>
             {
-                var channelId = Prefix + key + "_" + c.Id.ToString(CultureInfo.InvariantCulture);
+                var channelId = ChannelIdPrefix + key + "_" + c.Id.ToString(CultureInfo.InvariantCulture);
                 return new ChannelInfo
                 {
                     Id = channelId,
@@ -552,6 +563,149 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
         }
     }
 
+    /// <summary>Gets the mux a channel was last tuned from, or null if it has never been tuned.</summary>
+    /// <param name="channelId">The prefixed channel id.</param>
+    /// <returns>The mux name.</returns>
+    internal string? MuxOf(string channelId) => _muxByChannel.GetValueOrDefault(channelId);
+
+    /// <summary>Grabs a single still frame from a channel.</summary>
+    /// <remarks>
+    /// Reuses a stream someone is already watching when there is one — that costs Tvheadend nothing at all,
+    /// the bytes are already in our ring. Otherwise it tunes the channel itself, at the lowest possible
+    /// subscription weight so a real viewer always wins the tuner.
+    /// </remarks>
+    /// <param name="channelId">The prefixed channel id.</param>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>The path to a temporary image file, which the caller owns and must delete, or null.</returns>
+    internal async Task<string?> CaptureFrameAsync(string channelId, CancellationToken cancellationToken)
+    {
+        // Lowest weight Tvheadend accepts: a thumbnail is never worth interrupting anything.
+        const int CaptureWeight = 1;
+
+        var live = _live.GetValueOrDefault(channelId);
+        if (live is { IsAlive: false })
+        {
+            _live.TryRemove(channelId, out _);
+            live = null;
+        }
+
+        HtspLiveStream? owned = null;
+        try
+        {
+            if (live is null)
+            {
+                var (tuner, tvhChannelId) = Resolve(channelId);
+                var client = await ClientForAsync(tuner, cancellationToken).ConfigureAwait(false);
+                if (client.GetChannel(tvhChannelId)?.IsRadio != false)
+                {
+                    return null; // no video to grab, and an unknown channel is not worth tuning
+                }
+
+                var subscription = await client
+                    .SubscribeAsync(tvhChannelId, cancellationToken, CaptureWeight).ConfigureAwait(false);
+
+                // Comfortably more than the sample we are about to take: a ring smaller than the read would
+                // lap the reader mid-capture and hand ffmpeg a TS with a hole in it.
+                owned = new HtspLiveStream(client, subscription, _appHost, _mediaEncoder, 4 << 20, _logger)
+                {
+                    OriginalStreamId = channelId,
+                };
+                await owned.Open(cancellationToken).ConfigureAwait(false);
+                RememberMux(channelId, owned);
+                live = owned;
+            }
+
+            return await ExtractFrameAsync(live, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogDebug(ex, "Could not capture a frame from channel {Channel}", channelId);
+            return null;
+        }
+        finally
+        {
+            if (owned is not null)
+            {
+                await owned.Close().ConfigureAwait(false);
+            }
+        }
+    }
+
+    private void Remember(string channelId, HtspLiveStream stream)
+    {
+        _live[channelId] = stream;
+        RememberMux(channelId, stream);
+    }
+
+    private void RememberMux(string channelId, HtspLiveStream stream)
+    {
+        if (stream.Subscription.Start?.SourceInfo?.Mux is { Length: > 0 } mux)
+        {
+            _muxByChannel[channelId] = mux;
+        }
+    }
+
+    private async Task<string?> ExtractFrameAsync(HtspLiveStream live, CancellationToken cancellationToken)
+    {
+        var video = live.MediaSource.MediaStreams
+            ?.FirstOrDefault(s => s.Type == MediaBrowser.Model.Entities.MediaStreamType.Video);
+        if (video is null)
+        {
+            return null;
+        }
+
+        var samplePath = Path.Combine(Path.GetTempPath(), "htsp-frame-" + Guid.NewGuid().ToString("N") + ".ts");
+        try
+        {
+            using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            budget.CancelAfter(TimeSpan.FromSeconds(20));
+
+            if (await live.CaptureSampleAsync(samplePath, budget.Token).ConfigureAwait(false) == 0)
+            {
+                return null;
+            }
+
+            // ffmpeg's own thumbnail filter picks the most representative frame of the slice, which beats
+            // taking the first one: a channel that cuts to black or a station ident is common at any offset.
+            return await _mediaEncoder.ExtractVideoImage(
+                samplePath,
+                "ts",
+                new MediaSourceInfo
+                {
+                    Protocol = MediaBrowser.Model.MediaInfo.MediaProtocol.File,
+                    Path = samplePath,
+                    Container = "ts",
+                },
+                video,
+                threedFormat: null,
+                offset: null,
+                budget.Token).ConfigureAwait(false);
+        }
+        finally
+        {
+            TryDelete(samplePath);
+        }
+    }
+
+    /// <summary>Deletes a temporary file, ignoring the usual reasons it might not be there.</summary>
+    /// <param name="path">The file to delete.</param>
+    internal static void TryDelete(string? path)
+    {
+        if (string.IsNullOrEmpty(path))
+        {
+            return;
+        }
+
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // best effort — a small temp file
+        }
+    }
+
     private static string ContentTypeOf(byte[] d) => d switch
     {
         [0x89, 0x50, ..] => "image/png",
@@ -576,7 +730,7 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
     private (TunerHostInfo Tuner, long ChannelId) Resolve(string channelId)
     {
         // channelId = "htsp_{serverKey}_{tvhChannelId}" (serverKey = StableKey of the host:port)
-        var rest = channelId.StartsWith(Prefix, StringComparison.Ordinal) ? channelId[Prefix.Length..] : channelId;
+        var rest = channelId.StartsWith(ChannelIdPrefix, StringComparison.Ordinal) ? channelId[ChannelIdPrefix.Length..] : channelId;
         var split = rest.LastIndexOf('_');
         var serverKey = split > 0 ? rest[..split] : string.Empty;
         var tvhId = long.Parse(rest[(split + 1)..], CultureInfo.InvariantCulture);

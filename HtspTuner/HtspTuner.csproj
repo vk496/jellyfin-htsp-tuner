@@ -3,9 +3,9 @@
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <RootNamespace>HtspTuner</RootNamespace>
-    <AssemblyVersion>1.0.0.18</AssemblyVersion>
-    <FileVersion>1.0.0.18</FileVersion>
-    <Version>1.0.0.18</Version>
+    <AssemblyVersion>1.0.0.20</AssemblyVersion>
+    <FileVersion>1.0.0.20</FileVersion>
+    <Version>1.0.0.20</Version>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
@@ -18,6 +18,8 @@
     <!-- Compile against the server API, never ship it: ExcludeAssets/Private keeps bin/ clean. -->
     <PackageReference Include="Jellyfin.Controller" Version="10.11.11" ExcludeAssets="runtime" Private="false" />
     <PackageReference Include="Jellyfin.Model" Version="10.11.11" ExcludeAssets="runtime" Private="false" />
+    <!-- IHostedService only; the server already hosts it, hence the same compile-only treatment. -->
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.11" ExcludeAssets="runtime" Private="false" />
   </ItemGroup>
 
   <ItemGroup>
