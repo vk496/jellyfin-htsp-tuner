@@ -49,21 +49,28 @@ artifacts:
 
 # Only the current version's notes -- each release carries just its own changelog.
 changelog: |-
-  - Fill in missing programme images from the broadcast itself. Most programmes come with no
-    artwork, which is what leaves the Live TV home page full of blank placeholder tiles;
-    every minute the plugin now grabs a still frame off the channel for a few of the
-    programmes on air that have none, and stamps the channel's logo into the corner so a row
-    of thumbnails still says where each one came from. A channel someone is already watching
-    is sampled from the buffer already in memory, so Tvheadend never sees it, and anything
-    that does need tuning subscribes at the lowest weight, so a viewer always wins a
-    contended tuner. On by default; scope, scan interval, logo size, margin and shadow are
-    all settings.
-  - Delete Live TV artwork for programmes that no longer exist. Jellyfin drops the programme from
-    the database when it ages out of the guide but leaves the picture on disk, because it only
-    clears metadata folders for items that came from a file -- so they accumulate for as long as
-    the server has had Live TV.
-  - Keep all of that out of a viewer's way. A capture holds its tuner at the lowest weight Tvheadend
-    accepts, so a viewer starting a channel takes it back rather than waiting; a channel already
-    being watched is sampled from the open stream and costs nothing at all; and the artwork cleanup
-    waits for a quiet moment. For setups where the tuners share a dish and retuning one disturbs the
-    others, captures needing a tuner can be deferred entirely while anybody is watching.
+  - Give programmes a picture, taken from the broadcast itself. Most programmes come with no
+    artwork, which is what leaves the Live TV home page full of blank placeholder tiles. The
+    plugin now grabs a still frame off the channel for the programmes on air that have none,
+    and stamps the channel's logo into the corner on a soft dark disc so a row of thumbnails
+    still says where each one came from. It works through the home page a viewer at a time,
+    most recently used account first, and follows each multiplex it tunes so the other
+    channels on it come nearly free.
+  - Cost nothing where it can. A channel somebody is already watching is sampled from the
+    stream in memory -- no tuner, no subscription -- and re-shot every few minutes, since the
+    frame caught in a programme's opening seconds is rarely the one that describes it. Every
+    other capture holds its tuner at the lowest weight Tvheadend accepts, so a viewer starting
+    a channel takes it back rather than waiting. Broadcaster artwork is never overwritten.
+  - Give recordings a picture too. Jellyfin copies a programme's artwork next to the recording
+    as it starts, so a programme still blank at that moment kept a blank recording for good.
+    Opening a channel now captures a frame straight away, which is exactly when a recording
+    begins.
+  - Delete Live TV artwork for programmes that no longer exist. Jellyfin drops the programme
+    from the database when it ages out of the guide but leaves the picture on disk, because it
+    only clears metadata folders for items that came from a file -- so they accumulate for as
+    long as the server has had Live TV. Hundreds of megabytes on a long-running install.
+  - Settings for all of it, and a button on the settings page to run a sweep on demand or stop
+    one that is running -- captures are deliberately unhurried, so there has to be a way to say
+    "the TV is free, get on with it".
+  - Report a tuner's lock state where it has no signal figures to report, instead of leaving
+    the column blank.
