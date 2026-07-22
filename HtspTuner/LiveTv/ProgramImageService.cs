@@ -266,9 +266,11 @@ public sealed class ProgramImageService : BackgroundService
             candidates = candidates.Where(x => free.Contains(x.Channel.Id)).ToList();
             if (before != candidates.Count)
             {
-                _logger.LogDebug(
-                    "Somebody is watching, so {Skipped} of {Total} captures that would need a tuner are deferred",
-                    before - candidates.Count, before);
+                // Information, not debug: this is the plugin declining to do the thing it was asked to do,
+                // and whether it engaged is exactly the question when somebody reports playback trouble.
+                _logger.LogInformation(
+                    "Watching {Channels}, so {Skipped} of {Total} captures needing a tuner are deferred",
+                    string.Join(", ", watching), before - candidates.Count, before);
             }
         }
 

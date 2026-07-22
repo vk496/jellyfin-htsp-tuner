@@ -615,6 +615,13 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
         budget.CancelAfter(TimeSpan.FromSeconds(30));
         var ct = budget.Token;
 
+        if (live is not null)
+        {
+            // The free case, and the one worth being able to see in the log: no tuner, no subscription, just
+            // a second reader on bytes already in memory.
+            _logger.LogInformation("Capturing a frame for channel {Channel} from the stream already open", channelId);
+        }
+
         HtspLiveStream? owned = null;
         HtspSubscription? orphan = null;
         try
