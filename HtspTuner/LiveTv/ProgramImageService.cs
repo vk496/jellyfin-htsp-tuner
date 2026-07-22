@@ -45,8 +45,10 @@ internal sealed class ProgramImageService : BackgroundService
     private readonly ILogger<ProgramImageService> _logger;
     private readonly ConcurrentDictionary<string, DateTime> _cooldown = new();
 
-    // Starts "now" so a server restart does not trigger a sweep of the whole metadata tree on the first tick.
-    private DateTime _lastCleanupUtc = DateTime.UtcNow;
+    // Set so the first sweep happens a few minutes in, not on the first tick and not a full hour later:
+    // walking the whole metadata tree is not something to do while the server is still starting up, but
+    // anchoring it to boot would mean a server restarted more often than the interval never cleans at all.
+    private DateTime _lastCleanupUtc = DateTime.UtcNow - CleanupInterval + TimeSpan.FromMinutes(5);
 
     /// <summary>Initializes a new instance of the <see cref="ProgramImageService"/> class.</summary>
     /// <param name="host">The tuner host, which owns the channels and does the capturing.</param>
