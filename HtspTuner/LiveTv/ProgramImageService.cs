@@ -43,10 +43,10 @@ public sealed class ProgramImageService : BackgroundService
     private static readonly TimeSpan ActiveUserWindow = TimeSpan.FromDays(30);
 
     // Ahead of everything on the page: a channel already being watched is the cheapest capture there is.
-    private const int WatchedRank = -1;
+    private const long WatchedRank = -1;
 
     // Not on the page at all, so it has no claim on being done before anything that is.
-    private const int Unranked = int.MaxValue;
+    private const long Unranked = long.MaxValue;
 
     // Bounds one pass: the first run on a server that has been collecting these for months has thousands to
     // get through, and there is no hurry.
@@ -268,7 +268,7 @@ public sealed class ProgramImageService : BackgroundService
         // Where each programme sits on the page. Jellyfin returns the row already ordered, best first, so
         // position in that list is exactly how prominent a tile is -- and the whole point of capturing is
         // the tiles somebody is looking at.
-        var rank = new Dictionary<Guid, int>();
+        var rank = new Dictionary<Guid, long>();
         var users = ActiveUsers();
         for (var whose = 0; whose < users.Count; whose++)
         {
@@ -302,11 +302,16 @@ public sealed class ProgramImageService : BackgroundService
                 // position in the accumulated list instead put every one of the first user's tiles ahead
                 // of every one of the second's, however prominent the second's actually were.
                 //
-                // Position dominates; who it belongs to only breaks ties, most recently active first. Two
-                // people's rows both start at position zero, and without a tiebreak which of those two gets
-                // the tuner first comes down to dictionary order.
-                var score = (position * users.Count) + whose;
-                rank[item.Id] = Math.Min(rank.GetValueOrDefault(item.Id, int.MaxValue), score);
+                // Account first, position second: one person's row is worked through before the next
+                // person's begins. Ranking by position across everybody instead interleaved them, so the
+                // top of a row belonging to somebody who has never watched anything -- and whose row is
+                // therefore in no meaningful order at all -- outranked the second entry of a row driven by
+                // real viewing history.
+                //
+                // Still the best across accounts, so a channel two people both have keeps the better claim
+                // rather than the last one seen.
+                var score = ((long)whose << 32) | (uint)position;
+                rank[item.Id] = Math.Min(rank.GetValueOrDefault(item.Id, Unranked), score);
             }
         }
 
@@ -420,7 +425,7 @@ public sealed class ProgramImageService : BackgroundService
     }
 
     private void AddWatchedChannelPrograms(
-        List<BaseItem> missing, HashSet<Guid> seen, Dictionary<Guid, int> rank, CancellationToken cancellationToken)
+        List<BaseItem> missing, HashSet<Guid> seen, Dictionary<Guid, long> rank, CancellationToken cancellationToken)
     {
         var watched = _host.WatchedChannelIds();
         if (watched.Count == 0)
@@ -577,9 +582,10 @@ public sealed class ProgramImageService : BackgroundService
     /// <summary>Orders a sweep's work: what is on screen first, then whatever is left, at random.</summary>
     /// <remarks>
     /// Two things decide this. Prominence, because a tile nobody can see is not worth a tuner ahead of one
-    /// they are looking at — and the previous order shuffled that away entirely. And the multiplex, because
-    /// Tvheadend serves a second channel off one it is already tuned to without touching the tuner, so once
-    /// a mux has been picked the rest of its channels are nearly free and should follow immediately.
+    /// they are looking at — one account's row at a time, most recently used first, rather than interleaving
+    /// everybody's. And the multiplex, because Tvheadend serves a second channel off one it is already tuned
+    /// to without touching the tuner, so once a mux has been picked the rest of its channels are nearly free
+    /// and should follow immediately.
     /// Whatever is left over goes last in random order, so a sweep cut short does not keep retrying the same
     /// few channels while the tail is never reached.
     /// </remarks>
@@ -589,9 +595,9 @@ public sealed class ProgramImageService : BackgroundService
     /// <param name="rankOf">Returns how prominent an item is; lower is more visible, <see cref="Unranked"/> is not on the page.</param>
     /// <returns>The ordered items.</returns>
     internal static IEnumerable<T> CaptureOrder<T>(
-        IReadOnlyList<T> items, Func<T, string?> muxOf, Func<T, int> rankOf)
+        IReadOnlyList<T> items, Func<T, string?> muxOf, Func<T, long> rankOf)
     {
-        var ranked = new List<(T Item, int Rank, string Key)>();
+        var ranked = new List<(T Item, long Rank, string Key)>();
         var rest = new List<T>();
 
         for (var i = 0; i < items.Count; i++)

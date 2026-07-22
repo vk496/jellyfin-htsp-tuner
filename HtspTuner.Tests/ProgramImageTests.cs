@@ -11,7 +11,7 @@ namespace HtspTuner.Tests;
 /// </summary>
 public class ProgramImageTests
 {
-    private sealed record Candidate(string Name, string? Mux, int Rank);
+    private sealed record Candidate(string Name, string? Mux, long Rank);
 
     private static List<string> Order(params Candidate[] items)
         => ProgramImageService.CaptureOrder(items, c => c.Mux, c => c.Rank).Select(c => c.Name).ToList();
@@ -55,7 +55,7 @@ public class ProgramImageTests
     public void ChannelsNotOnThePageGoLast()
     {
         var order = Order(
-            new Candidate("offpage", null, int.MaxValue),
+            new Candidate("offpage", null, long.MaxValue),
             new Candidate("onpage", "A", 3));
 
         Assert.Equal(["onpage", "offpage"], order);
@@ -75,11 +75,29 @@ public class ProgramImageTests
     }
 
     [Fact]
+    public void OneAccountsRowIsFinishedBeforeTheNextBegins()
+    {
+        // Rank packs the account into the high bits and the position into the low ones, so the second
+        // entry of the first account's row still outranks the first entry of the second account's. An
+        // account that has never watched anything has no meaningful order to its row, and interleaving
+        // let the top of that row jump ahead of a row driven by real viewing history.
+        const long firstAccount = 0L << 32;
+        const long secondAccount = 1L << 32;
+
+        var order = Order(
+            new Candidate("theirs-top", "B", secondAccount | 0),
+            new Candidate("mine-second", "A", firstAccount | 1),
+            new Candidate("mine-top", "A", firstAccount | 0));
+
+        Assert.Equal(["mine-top", "mine-second", "theirs-top"], order);
+    }
+
+    [Fact]
     public void EverythingIsKept()
     {
         var order = Order(
             new Candidate("a", "A", 0),
-            new Candidate("b", null, int.MaxValue),
+            new Candidate("b", null, long.MaxValue),
             new Candidate("c", "A", 1),
             new Candidate("d", "B", 2));
 
