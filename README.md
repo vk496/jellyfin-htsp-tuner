@@ -69,7 +69,9 @@ automatically.
   so a real viewer always wins a contended tuner. The channel's own logo is stamped into the
   corner of the frame, sized as a share of the frame width so it looks the same on SD, HD and UHD
   channels side by side. Scoped by default to exactly the set of programmes Jellyfin's home page
-  picks from; size, margin, shadow, scan interval and scope are all settings.
+  picks from; size, margin, shadow, scan interval, scope and how long a failed channel is skipped
+  for are all settings. Work is ordered by **multiplex**, so consecutive captures reuse a mux
+  Tvheadend has already tuned rather than making it retune.
 - **Recording** — Jellyfin's own DVR records the tuner stream, like any tuner. (Tvheadend-native
   DVR is intentionally not done: it would require an `ILiveTvService`, which cannot coexist with
   this plugin's `ITunerHost` without listing every channel twice.)
