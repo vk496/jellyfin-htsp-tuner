@@ -107,6 +107,17 @@
                         busy frame swallows its edges without one. Blur and offset scale with the logo automatically.
                     </div>
                 </div>
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label><input is="emby-checkbox" type="checkbox" id="PauseCapturesWhileWatching" /><span>Pause captures that need a tuner while somebody is watching</span></label>
+                    <div class="fieldDescription">
+                        Subscription weight stops a capture taking a tuner off a viewer, but it cannot make tuning
+                        free: on a satellite install the tuners share an LNB, so moving one to another transponder
+                        means DiSEqC traffic and a polarisation change on the shared cable, and each capture runs two
+                        ffmpeg processes that compete with whatever is transcoding. That shows up as somebody's picture
+                        stuttering, not as a lost subscription. Captures from streams already open are unaffected &mdash;
+                        those touch no tuner at all.
+                    </div>
+                </div>
                 <div class="inputContainer">
                     <label class="inputLabel inputLabelUnfocused" for="WatchedRefreshMinutes">Re-shoot a watched channel every (minutes)</label>
                     <input is="emby-input" type="number" id="WatchedRefreshMinutes" min="0" max="120" />
@@ -218,7 +229,7 @@
                 "SubscriptionWeight", "MaxBufferMb", "StreamBaseUrl", "AutoGuideRefreshMinutes",
                 "AnalyzeDurationMs", "ProgramImageCandidates", "ProgramImageScanSeconds",
                 "ProgramImageLogoPercent", "ProgramImageLogoMarginPercent", "ProgramImageLogoShadowPercent", "ProgramImageParkMinutes", "ProgramImageTuneSeconds", "WatchedRefreshMinutes"];
-            var checks = ["ImportChannelTags", "CaptureProgramImages", "CleanOrphanedProgramImages"];
+            var checks = ["ImportChannelTags", "CaptureProgramImages", "CleanOrphanedProgramImages", "PauseCapturesWhileWatching"];
 
             function load(cfg) {
                 fields.forEach(function (f) { document.getElementById(f).value = cfg[f] == null ? "" : cfg[f]; });

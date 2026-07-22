@@ -170,6 +170,20 @@ public class PluginConfiguration : BasePluginConfiguration
     public int WatchedRefreshMinutes { get; set; } = 3;
 
     /// <summary>
+    /// Gets or sets a value indicating whether captures that would need to tune a channel are deferred while
+    /// somebody is watching. Captures from streams already open are unaffected.
+    /// </summary>
+    /// <remarks>
+    /// Subscription weight stops a capture taking a tuner away from a viewer, but it cannot make tuning
+    /// free. On a satellite install the tuners share an LNB, so moving one to another transponder means
+    /// DiSEqC traffic and a polarisation or band change on the shared cable; and the two ffmpeg runs a
+    /// capture needs compete with whatever is transcoding the stream being watched. Neither shows up as a
+    /// lost subscription -- they show up as somebody's picture stuttering. There is nothing urgent about a
+    /// thumbnail, so by default it waits.
+    /// </remarks>
+    public bool PauseCapturesWhileWatching { get; set; } = true;
+
+    /// <summary>
     /// Gets or sets the minimum age, in minutes, before a Tvheadend EPG push may trigger a Jellyfin guide
     /// refresh. Zero disables it entirely, leaving the guide to Jellyfin's own schedule.
     /// </summary>

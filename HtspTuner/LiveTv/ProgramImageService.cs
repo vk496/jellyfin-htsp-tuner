@@ -101,7 +101,7 @@ internal sealed class ProgramImageService : BackgroundService
             try
             {
                 await ScanAsync(stoppingToken).ConfigureAwait(false);
-                CleanOrphanedImages(stoppingToken);
+                await CleanOrphanedImagesAsync(stoppingToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -190,6 +190,26 @@ internal sealed class ProgramImageService : BackgroundService
             .Where(x => _cooldown.GetValueOrDefault(x.Channel.Id) <= now)
             .DistinctBy(x => x.Channel.Id, StringComparer.Ordinal)
             .ToList();
+
+        // Weight keeps a capture from taking a tuner off a viewer, but it cannot make tuning free. On a
+        // satellite install the tuners share an LNB, so putting one on another transponder means DiSEqC
+        // traffic and a polarisation or band switch on the shared cable -- and the two ffmpeg runs per
+        // capture compete with whatever is transcoding the stream somebody is watching. None of that shows
+        // up as a lost subscription; it shows up as a viewer's picture stuttering. So while anyone is
+        // watching, capture only from the streams already open, which touch no tuner and decode nothing new.
+        var watching = _host.WatchedChannelIds();
+        if (watching.Count > 0 && Plugin.Instance?.Configuration.PauseCapturesWhileWatching != false)
+        {
+            var free = watching.ToHashSet(StringComparer.Ordinal);
+            var before = candidates.Count;
+            candidates = candidates.Where(x => free.Contains(x.Channel.Id)).ToList();
+            if (before != candidates.Count)
+            {
+                _logger.LogDebug(
+                    "Somebody is watching, so {Skipped} of {Total} captures that would need a tuner are deferred",
+                    before - candidates.Count, before);
+            }
+        }
 
         // A scan works the whole backlog, not a fixed slice of it: the point is to fill the page in minutes,
         // and a per-scan cap meant the page filled at the cap's rate no matter how cheap each capture got.
@@ -302,10 +322,17 @@ internal sealed class ProgramImageService : BackgroundService
     // itself here (see CleanupInterval). So delete the artwork folders whose programme no longer exists.
     // Deliberately not limited to our own captures: an orphaned folder is rubbish whoever wrote it, and
     // there is nothing in the file to tell a captured frame from a downloaded EPG image anyway.
-    private void CleanOrphanedImages(CancellationToken cancellationToken)
+    private async Task CleanOrphanedImagesAsync(CancellationToken cancellationToken)
     {
         if (Plugin.Instance?.Configuration.CleanOrphanedProgramImages != true
             || DateTime.UtcNow - _lastCleanupUtc < CleanupInterval)
+        {
+            return;
+        }
+
+        // Thousands of directory deletions in a row is a lot of disk for a server that is also feeding a
+        // live stream. It can wait for a quiet moment; nothing here is urgent.
+        if (_host.WatchedChannelIds().Count > 0)
         {
             return;
         }
@@ -347,10 +374,21 @@ internal sealed class ProgramImageService : BackgroundService
                 Directory.Delete(dir, true);
                 deleted++;
                 freed += size;
+
+                // Paced rather than flat out, for the same reason.
+                if (deleted % 100 == 0)
+                {
+                    await Task.Delay(200, cancellationToken).ConfigureAwait(false);
+                }
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 // Someone else's file, or in use. Next pass will find it again.
+            }
+
+            if (_host.WatchedChannelIds().Count > 0)
+            {
+                break; // somebody started watching; stop and pick this up next time
             }
         }
 
