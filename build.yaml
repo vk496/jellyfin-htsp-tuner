@@ -52,7 +52,9 @@ changelog: |-
   - Fill in missing programme images from the broadcast itself. Most programmes come with no
     artwork, which is what leaves the Live TV home page full of blank placeholder tiles;
     every minute the plugin now grabs a still frame off the channel for a few of the
-    programmes on air that have none. A channel someone is already watching is sampled from
-    the buffer already in memory, so Tvheadend never sees it, and anything that does need
-    tuning subscribes at the lowest weight, so a viewer always wins a contended tuner. On by
-    default, and scoped to the programmes the home page actually shows; both are settings.
+    programmes on air that have none, and stamps the channel's logo into the corner so a row
+    of thumbnails still says where each one came from. A channel someone is already watching
+    is sampled from the buffer already in memory, so Tvheadend never sees it, and anything
+    that does need tuning subscribes at the lowest weight, so a viewer always wins a
+    contended tuner. On by default; scope, scan interval, logo size, margin and shadow are
+    all settings.
