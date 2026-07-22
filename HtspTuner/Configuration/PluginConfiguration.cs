@@ -158,6 +158,18 @@ public class PluginConfiguration : BasePluginConfiguration
     public bool CleanOrphanedProgramImages { get; set; } = true;
 
     /// <summary>
+    /// Gets or sets how often, in minutes, the picture for a programme on a channel somebody is watching is
+    /// taken again. Zero only ever captures a programme that has no picture at all.
+    /// </summary>
+    /// <remarks>
+    /// A channel already being streamed is free to sample: the bytes are in memory, no tuner is touched and
+    /// nothing can be preempted. And a single still is a poor summary of an hour-long programme -- the frame
+    /// caught in the opening seconds is usually the least representative one there is. Each new picture
+    /// replaces the last, so this does not accumulate on disk.
+    /// </remarks>
+    public int WatchedRefreshMinutes { get; set; } = 3;
+
+    /// <summary>
     /// Gets or sets the minimum age, in minutes, before a Tvheadend EPG push may trigger a Jellyfin guide
     /// refresh. Zero disables it entirely, leaving the guide to Jellyfin's own schedule.
     /// </summary>

@@ -35,6 +35,8 @@ internal sealed class ProgramImageService : BackgroundService
     // This grace makes that race impossible rather than unlikely.
     private static readonly TimeSpan OrphanGrace = TimeSpan.FromHours(6);
 
+    private static readonly TimeSpan ChannelIdCacheTtl = TimeSpan.FromMinutes(10);
+
     // Bounds one pass: the first run on a server that has been collecting these for months has thousands to
     // get through, and there is no hurry.
     private const int MaxDeletesPerPass = 2000;
@@ -52,6 +54,14 @@ internal sealed class ProgramImageService : BackgroundService
     // walking the whole metadata tree is not something to do while the server is still starting up, but
     // anchoring it to boot would mean a server restarted more often than the interval never cleans at all.
     private DateTime _lastCleanupUtc = DateTime.UtcNow - CleanupInterval + TimeSpan.FromMinutes(5);
+
+    // When each programme's picture was last taken, so a watched channel is re-shot on a schedule rather
+    // than every sweep. In memory only: after a restart every programme is simply due once more, which
+    // costs one free capture each.
+    private readonly ConcurrentDictionary<Guid, DateTime> _refreshedAt = new();
+
+    private Dictionary<string, Guid>? _channelIds;
+    private DateTime _channelIdsAtUtc;
 
     /// <summary>Initializes a new instance of the <see cref="ProgramImageService"/> class.</summary>
     /// <param name="host">The tuner host, which owns the channels and does the capturing.</param>
@@ -149,6 +159,11 @@ internal sealed class ProgramImageService : BackgroundService
             }
         }
 
+        // Whatever is on a channel somebody is watching, page or no page. Reading that costs Tvheadend
+        // nothing -- the bytes are already buffered, no tuner is touched -- so there is no reason to let it
+        // stay blank just because the home page happened not to rank it.
+        AddWatchedChannelPrograms(missing, seen, cancellationToken);
+
         if (missing.Count == 0)
         {
             return;
@@ -230,6 +245,57 @@ internal sealed class ProgramImageService : BackgroundService
         _logger.LogInformation(
             "Captured {Captured} of {Total} missing programme images in {Seconds}s{Why}",
             captured, work.Count, (int)(DateTime.UtcNow - started).TotalSeconds, why);
+    }
+
+    private void AddWatchedChannelPrograms(List<BaseItem> missing, HashSet<Guid> seen, CancellationToken cancellationToken)
+    {
+        var watched = _host.WatchedChannelIds();
+        if (watched.Count == 0)
+        {
+            return;
+        }
+
+        // Going from our channel id back to Jellyfin's needs the channel list, which is the one query that
+        // scales with the size of the lineup rather than the size of the page. It only runs while somebody
+        // is actually watching, and the answer changes about as often as the guide does, so it is cached.
+        if (_channelIds is null || DateTime.UtcNow - _channelIdsAtUtc > ChannelIdCacheTtl)
+        {
+            _channelIds = _library
+                .GetItemList(new InternalItemsQuery { IncludeItemTypes = [BaseItemKind.LiveTvChannel] })
+                .Where(c => c.ExternalId?.StartsWith(HtspTunerHost.ChannelIdPrefix, StringComparison.Ordinal) == true)
+                .GroupBy(c => c.ExternalId!, StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => g.First().Id, StringComparer.Ordinal);
+            _channelIdsAtUtc = DateTime.UtcNow;
+        }
+
+        var guids = watched.Select(id => _channelIds.GetValueOrDefault(id)).Where(g => g != Guid.Empty).ToArray();
+        if (guids.Length == 0)
+        {
+            return;
+        }
+
+        // A watched channel is also worth re-shooting now and then. The picture is a still from a live
+        // broadcast, so half an hour into a programme the opening titles are a poor summary of it -- and
+        // taking another costs nothing while the stream is already in memory.
+        var refresh = Plugin.Instance?.Configuration.WatchedRefreshMinutes ?? 0;
+        var now = DateTime.UtcNow;
+
+        cancellationToken.ThrowIfCancellationRequested();
+        foreach (var item in _library.GetItemList(new InternalItemsQuery
+                 {
+                     IncludeItemTypes = [BaseItemKind.LiveTvProgram],
+                     IsAiring = true,
+                     ChannelIds = guids,
+                 }))
+        {
+            var due = !item.HasImage(ImageType.Primary, 0)
+                      || (refresh > 0
+                          && now - _refreshedAt.GetValueOrDefault(item.Id) >= TimeSpan.FromMinutes(refresh));
+            if (due && seen.Add(item.Id))
+            {
+                missing.Add(item);
+            }
+        }
     }
 
     // A captured frame is worthless the moment its programme is over, and Jellyfin will not tidy up after
@@ -353,6 +419,7 @@ internal sealed class ProgramImageService : BackgroundService
             // A guide refresh drops any image whose programme has no ImageUrl in the listings — which is
             // every programme we capture for — so this can be undone by a refresh. That is what makes the
             // scan a loop rather than a one-off: it simply takes the picture again on the next pass.
+            _refreshedAt[program.Id] = DateTime.UtcNow;
             _logger.LogDebug("Captured a thumbnail for \"{Program}\" from {Channel}", program.Name, channelId);
             return (null, false);
         }

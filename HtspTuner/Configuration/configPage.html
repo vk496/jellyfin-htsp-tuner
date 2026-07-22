@@ -108,6 +108,16 @@
                     </div>
                 </div>
                 <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="WatchedRefreshMinutes">Re-shoot a watched channel every (minutes)</label>
+                    <input is="emby-input" type="number" id="WatchedRefreshMinutes" min="0" max="120" />
+                    <div class="fieldDescription">
+                        A channel already being streamed is free to sample &mdash; the bytes are in memory, no tuner is
+                        touched &mdash; and the frame caught in a programme's opening seconds is usually the least
+                        representative one there is. Each new picture replaces the last, so nothing accumulates on disk.
+                        Default <code>3</code>. <code>0</code> only ever captures programmes with no picture at all.
+                    </div>
+                </div>
+                <div class="inputContainer">
                     <label class="inputLabel inputLabelUnfocused" for="ProgramImageParkMinutes">Park a failed channel for (minutes)</label>
                     <input is="emby-input" type="number" id="ProgramImageParkMinutes" min="0" max="1440" />
                     <div class="fieldDescription">
@@ -207,7 +217,7 @@
             var fields = ["Host", "HtspPort", "Username", "Password", "Profile",
                 "SubscriptionWeight", "MaxBufferMb", "StreamBaseUrl", "AutoGuideRefreshMinutes",
                 "AnalyzeDurationMs", "ProgramImageCandidates", "ProgramImageScanSeconds",
-                "ProgramImageLogoPercent", "ProgramImageLogoMarginPercent", "ProgramImageLogoShadowPercent", "ProgramImageParkMinutes", "ProgramImageTuneSeconds"];
+                "ProgramImageLogoPercent", "ProgramImageLogoMarginPercent", "ProgramImageLogoShadowPercent", "ProgramImageParkMinutes", "ProgramImageTuneSeconds", "WatchedRefreshMinutes"];
             var checks = ["ImportChannelTags", "CaptureProgramImages", "CleanOrphanedProgramImages"];
 
             function load(cfg) {
@@ -233,6 +243,7 @@
                 cfg.ProgramImageLogoShadowPercent = parseInt(document.getElementById("ProgramImageLogoShadowPercent").value, 10) || 0;
                 cfg.ProgramImageParkMinutes = parseInt(document.getElementById("ProgramImageParkMinutes").value, 10) || 0;
                 cfg.ProgramImageTuneSeconds = parseInt(document.getElementById("ProgramImageTuneSeconds").value, 10) || 8;
+                cfg.WatchedRefreshMinutes = parseInt(document.getElementById("WatchedRefreshMinutes").value, 10) || 0;
                 checks.forEach(function (f) { cfg[f] = document.getElementById(f).checked; });
                 return cfg;
             }

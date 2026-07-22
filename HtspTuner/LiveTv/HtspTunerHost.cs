@@ -567,6 +567,15 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
         }
     }
 
+    /// <summary>Gets the channels currently being streamed to somebody.</summary>
+    /// <remarks>
+    /// Sampling one of these costs Tvheadend nothing at all: the bytes are already in our ring, so no tuner
+    /// is touched and nothing can be preempted.
+    /// </remarks>
+    /// <returns>The prefixed channel ids.</returns>
+    internal IReadOnlyList<string> WatchedChannelIds()
+        => _live.Where(kv => kv.Value.IsAlive).Select(kv => kv.Key).ToList();
+
     /// <summary>Gets the mux a channel was last tuned from, or null if it has never been tuned.</summary>
     /// <param name="channelId">The prefixed channel id.</param>
     /// <returns>The mux name.</returns>
