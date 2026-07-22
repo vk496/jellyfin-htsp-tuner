@@ -675,6 +675,12 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
             // Running out of budget is the ordinary outcome for a channel that will not tune.
             return FrameCapture.Failed("timed out tuning the channel");
         }
+        catch (HtspServerException ex)
+        {
+            // The server is unreachable, so every remaining channel would fail the same way.
+            _logger.LogDebug(ex, "Could not capture a frame from channel {Channel}", channelId);
+            return FrameCapture.Unreachable(ex.Message);
+        }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogDebug(ex, "Could not capture a frame from channel {Channel}", channelId);

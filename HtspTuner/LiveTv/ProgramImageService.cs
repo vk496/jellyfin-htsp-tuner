@@ -178,8 +178,7 @@ internal sealed class ProgramImageService : BackgroundService
 
         // A scan works the whole backlog, not a fixed slice of it: the point is to fill the page in minutes,
         // and a per-scan cap meant the page filled at the cap's rate no matter how cheap each capture got.
-        // Ticks that fire while this is still running simply find nothing left to do -- WaitForNextTickAsync
-        // coalesces them, so scans never overlap and never queue up.
+        // Sweeps cannot overlap -- the interval is counted from the end of one to the start of the next.
         //
         // Shuffled first, because the query order is stable and always working from the front would give the
         // same channels every attempt if a scan is cut short. Then grouped by mux, which decides how they are
@@ -193,24 +192,31 @@ internal sealed class ProgramImageService : BackgroundService
         foreach (var (program, channel) in work)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var error = await TryCaptureAsync(program, channel.Id, channel.Logo, cancellationToken)
+            var (error, fatal) = await TryCaptureAsync(program, channel.Id, channel.Logo, cancellationToken)
                 .ConfigureAwait(false);
             if (error is null)
             {
                 captured++;
+                continue;
             }
-            else
+
+            reasons[error] = reasons.GetValueOrDefault(error) + 1;
+            if (fatal)
             {
-                // Parking a channel that just failed stops a sweep spending its whole budget on the same
-                // dead channels, but it also means a channel that was only briefly unavailable -- a guide
-                // refresh holding the tuners, a transient loss of signal -- stays blank for the whole park.
-                // Off by default for that reason: a retry costs one short tune.
-                var park = Plugin.Instance?.Configuration.ProgramImageParkMinutes ?? 0;
-                if (park > 0)
-                {
-                    _cooldown[channel.Id] = DateTime.UtcNow + TimeSpan.FromMinutes(park);
-                }
-                reasons[error] = reasons.GetValueOrDefault(error) + 1;
+                // Tvheadend is unreachable, so the rest of the list would only produce this same answer
+                // dozens more times -- and parking channels for a fault that is not theirs would keep them
+                // blank well after it recovers.
+                break;
+            }
+
+            // Parking a channel that just failed stops a sweep spending its whole budget on the same
+            // dead channels, but it also means a channel that was only briefly unavailable -- a guide
+            // refresh holding the tuners, a transient loss of signal -- stays blank for the whole park.
+            // Off by default for that reason: a retry costs one short tune.
+            var park = Plugin.Instance?.Configuration.ProgramImageParkMinutes ?? 0;
+            if (park > 0)
+            {
+                _cooldown[channel.Id] = DateTime.UtcNow + TimeSpan.FromMinutes(park);
             }
         }
 
@@ -319,14 +325,15 @@ internal sealed class ProgramImageService : BackgroundService
             .OrderBy(x => muxOf(x) is null ? 1 : 0)
             .ThenBy(muxOf, StringComparer.Ordinal);
 
-    // Returns null on success, or why no image was stored.
-    private async Task<string?> TryCaptureAsync(
+    // Returns (null, false) on success, otherwise why no image was stored and whether every other channel
+    // would hit the same thing.
+    private async Task<(string? Error, bool Fatal)> TryCaptureAsync(
         BaseItem program, string channelId, string? logoPath, CancellationToken cancellationToken)
     {
         var result = await _host.CaptureFrameAsync(channelId, logoPath, cancellationToken).ConfigureAwait(false);
         if (result.Path is not { } image)
         {
-            return result.Error ?? "unknown";
+            return (result.Error ?? "unknown", result.Fatal);
         }
 
         try
@@ -347,7 +354,7 @@ internal sealed class ProgramImageService : BackgroundService
             // every programme we capture for — so this can be undone by a refresh. That is what makes the
             // scan a loop rather than a one-off: it simply takes the picture again on the next pass.
             _logger.LogDebug("Captured a thumbnail for \"{Program}\" from {Channel}", program.Name, channelId);
-            return null;
+            return (null, false);
         }
         finally
         {
