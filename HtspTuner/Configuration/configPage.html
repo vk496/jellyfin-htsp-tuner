@@ -117,6 +117,15 @@
                         sweep is spending its time on the same dead channels.
                     </div>
                 </div>
+                <div class="checkboxContainer checkboxContainer-withDescription">
+                    <label><input is="emby-checkbox" type="checkbox" id="CleanOrphanedProgramImages" /><span>Delete artwork for programmes that no longer exist</span></label>
+                    <div class="fieldDescription">
+                        A captured frame is worthless once its programme is over, and Jellyfin never tidies these up
+                        &mdash; when a programme ages out of the guide it drops the database row but leaves the picture,
+                        so they build up for as long as the server has had Live TV. Only folders named exactly as an
+                        item id, whose item is gone and which have not been touched for six hours, are removed.
+                    </div>
+                </div>
                 <div class="inputContainer">
                     <label class="inputLabel inputLabelUnfocused" for="ProgramImageTuneSeconds">Give a capture this long to tune (seconds)</label>
                     <input is="emby-input" type="number" id="ProgramImageTuneSeconds" min="2" max="60" />
@@ -200,7 +209,7 @@
                 "SubscriptionWeight", "MaxBufferMb", "StreamBaseUrl", "AutoGuideRefreshMinutes",
                 "AnalyzeDurationMs", "ProgramImageCandidates", "ProgramImageScanSeconds",
                 "ProgramImageLogoPercent", "ProgramImageLogoMarginPercent", "ProgramImageLogoShadowPercent", "ProgramImageParkMinutes", "ProgramImageTuneSeconds"];
-            var checks = ["ImportChannelTags", "CaptureProgramImages"];
+            var checks = ["ImportChannelTags", "CaptureProgramImages", "CleanOrphanedProgramImages"];
 
             function load(cfg) {
                 fields.forEach(function (f) { document.getElementById(f).value = cfg[f] == null ? "" : cfg[f]; });

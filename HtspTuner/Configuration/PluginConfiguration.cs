@@ -146,6 +146,19 @@ public class PluginConfiguration : BasePluginConfiguration
     public int ProgramImageTuneSeconds { get; set; } = 8;
 
     /// <summary>
+    /// Gets or sets a value indicating whether Live TV artwork belonging to programmes that no longer exist
+    /// is deleted from disk.
+    /// </summary>
+    /// <remarks>
+    /// Jellyfin does not do this itself: when a programme ages out of the guide it drops the database row
+    /// but leaves the artwork folder, because it only clears those for items that came from a file. The
+    /// pictures therefore accumulate for as long as the server has had Live TV, and capturing frames adds
+    /// one per programme per airing. Only folders directly under the Live TV metadata directory, named
+    /// exactly as an item id, whose item is gone and which have not been touched for six hours are removed.
+    /// </remarks>
+    public bool CleanOrphanedProgramImages { get; set; } = true;
+
+    /// <summary>
     /// Gets or sets the minimum age, in minutes, before a Tvheadend EPG push may trigger a Jellyfin guide
     /// refresh. Zero disables it entirely, leaving the guide to Jellyfin's own schedule.
     /// </summary>

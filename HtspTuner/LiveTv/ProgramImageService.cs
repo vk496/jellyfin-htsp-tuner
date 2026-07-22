@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using Jellyfin.Data.Enums;
 using Jellyfin.Database.Implementations.Enums;
 using MediaBrowser.Controller.Entities;
+using MediaBrowser.Controller;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.LiveTv;
 using MediaBrowser.Controller.Providers;
@@ -23,24 +24,45 @@ namespace HtspTuner.LiveTv;
 /// </remarks>
 internal sealed class ProgramImageService : BackgroundService
 {
+    // Jellyfin never deletes a programme's artwork folder. CleanDatabase drops the item with
+    // DeleteFileLocation=false, and LibraryManager only clears an item's metadata folder when the item is
+    // file-protocol -- a programme has no path, so it is not. Every programme that ages out of the guide
+    // therefore leaves its picture behind for good, and capturing frames adds one per programme per airing.
+    private static readonly TimeSpan CleanupInterval = TimeSpan.FromHours(1);
+
+    // A folder is only an orphan if its item is gone, and an item is written a moment after its folder.
+    // This grace makes that race impossible rather than unlikely.
+    private static readonly TimeSpan OrphanGrace = TimeSpan.FromHours(6);
+
+    // Bounds one pass: the first run on a server that has been collecting these for months has thousands to
+    // get through, and there is no hurry.
+    private const int MaxDeletesPerPass = 2000;
+
     private readonly HtspTunerHost _host;
+    private readonly IServerApplicationPaths _appPaths;
     private readonly ILibraryManager _library;
     private readonly IProviderManager _providerManager;
     private readonly ILogger<ProgramImageService> _logger;
     private readonly ConcurrentDictionary<string, DateTime> _cooldown = new();
 
+    // Starts "now" so a server restart does not trigger a sweep of the whole metadata tree on the first tick.
+    private DateTime _lastCleanupUtc = DateTime.UtcNow;
+
     /// <summary>Initializes a new instance of the <see cref="ProgramImageService"/> class.</summary>
     /// <param name="host">The tuner host, which owns the channels and does the capturing.</param>
+    /// <param name="appPaths">Application paths, for finding the artwork Jellyfin leaves behind.</param>
     /// <param name="library">The library, used to find what the home page is showing.</param>
     /// <param name="providerManager">Used to store the captured image against the programme.</param>
     /// <param name="logger">The logger.</param>
     public ProgramImageService(
         HtspTunerHost host,
+        IServerApplicationPaths appPaths,
         ILibraryManager library,
         IProviderManager providerManager,
         ILogger<ProgramImageService> logger)
     {
         _host = host;
+        _appPaths = appPaths;
         _library = library;
         _providerManager = providerManager;
         _logger = logger;
@@ -58,6 +80,7 @@ internal sealed class ProgramImageService : BackgroundService
             try
             {
                 await ScanAsync(stoppingToken).ConfigureAwait(false);
+                CleanOrphanedImages(stoppingToken);
             }
             catch (OperationCanceledException)
             {
@@ -174,6 +197,70 @@ internal sealed class ProgramImageService : BackgroundService
             captured, work.Count, (int)(DateTime.UtcNow - started).TotalSeconds, why);
     }
 
+    // A captured frame is worthless the moment its programme is over, and Jellyfin will not tidy up after
+    // itself here (see CleanupInterval). So delete the artwork folders whose programme no longer exists.
+    // Deliberately not limited to our own captures: an orphaned folder is rubbish whoever wrote it, and
+    // there is nothing in the file to tell a captured frame from a downloaded EPG image anyway.
+    private void CleanOrphanedImages(CancellationToken cancellationToken)
+    {
+        if (Plugin.Instance?.Configuration.CleanOrphanedProgramImages != true
+            || DateTime.UtcNow - _lastCleanupUtc < CleanupInterval)
+        {
+            return;
+        }
+
+        _lastCleanupUtc = DateTime.UtcNow;
+        var root = Path.Combine(_appPaths.InternalMetadataPath, "livetv");
+        if (!Directory.Exists(root))
+        {
+            return;
+        }
+
+        var cutoff = DateTime.UtcNow - OrphanGrace;
+        var deleted = 0;
+        long freed = 0;
+
+        foreach (var dir in Directory.EnumerateDirectories(root))
+        {
+            if (cancellationToken.IsCancellationRequested || deleted >= MaxDeletesPerPass)
+            {
+                break;
+            }
+
+            // Only ever a folder named exactly as an item id, directly under livetv. Anything else is not
+            // ours to reason about, so it is left alone.
+            var name = Path.GetFileName(dir);
+            if (name.Length != 32 || !Guid.TryParseExact(name, "N", out var id))
+            {
+                continue;
+            }
+
+            try
+            {
+                if (Directory.GetLastWriteTimeUtc(dir) > cutoff || _library.GetItemById(id) is not null)
+                {
+                    continue;
+                }
+
+                var size = new DirectoryInfo(dir).EnumerateFiles("*", SearchOption.AllDirectories).Sum(f => f.Length);
+                Directory.Delete(dir, true);
+                deleted++;
+                freed += size;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Someone else's file, or in use. Next pass will find it again.
+            }
+        }
+
+        if (deleted > 0)
+        {
+            _logger.LogInformation(
+                "Deleted {Count} Live TV artwork folders whose programme no longer exists, freeing {Mb} MB",
+                deleted, freed / (1024 * 1024));
+        }
+    }
+
     // Fisher-Yates over a copy. Random.Shared is fine here: this only decides which thumbnails get taken
     // first, so it wants to be cheap and thread-safe, not unpredictable.
     private static List<T> Shuffle<T>(List<T> items)
@@ -207,7 +294,11 @@ internal sealed class ProgramImageService : BackgroundService
     private async Task<string?> TryCaptureAsync(
         BaseItem program, string channelId, string? logoPath, CancellationToken cancellationToken)
     {
-        var result = await _host.CaptureFrameAsync(channelId, logoPath, cancellationToken).ConfigureAwait(false);
+        // A movie is shown on a portrait card, which crops the sides away; the logo has to sit in the middle
+        // to survive that.
+        var isMovie = program is LiveTvProgram { IsMovie: true };
+        var result = await _host.CaptureFrameAsync(channelId, logoPath, isMovie, cancellationToken)
+            .ConfigureAwait(false);
         if (result.Path is not { } image)
         {
             return result.Error ?? "unknown";

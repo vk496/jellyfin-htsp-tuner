@@ -58,3 +58,7 @@ changelog: |-
     that does need tuning subscribes at the lowest weight, so a viewer always wins a
     contended tuner. On by default; scope, scan interval, logo size, margin and shadow are
     all settings.
+  - Delete Live TV artwork for programmes that no longer exist. Jellyfin drops the programme from
+    the database when it ages out of the guide but leaves the picture on disk, because it only
+    clears metadata folders for items that came from a file -- so they accumulate for as long as
+    the server has had Live TV.

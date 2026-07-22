@@ -71,7 +71,13 @@ automatically.
   channels side by side. Scoped by default to exactly the set of programmes Jellyfin's home page
   picks from; size, margin, shadow, scan interval, scope and how long a failed channel is skipped
   for are all settings. Work is ordered by **multiplex**, so consecutive captures reuse a mux
-  Tvheadend has already tuned rather than making it retune.
+  Tvheadend has already tuned rather than making it retune, with special handling for networks whose
+  Tvheadend mux objects are not one-to-one with a physical multiplex.
+- **Live TV artwork housekeeping** — Jellyfin drops a programme from the database when it ages out of
+  the guide but leaves its picture on disk forever, because it only clears metadata folders for items
+  that came from a file. On a long-running server that is hundreds of megabytes of artwork for
+  programmes that finished months ago. The plugin deletes the folders whose programme no longer
+  exists.
 - **Recording** — Jellyfin's own DVR records the tuner stream, like any tuner. (Tvheadend-native
   DVR is intentionally not done: it would require an `ILiveTvService`, which cannot coexist with
   this plugin's `ITunerHost` without listing every channel twice.)
