@@ -93,6 +93,9 @@ internal sealed class HtspSubscription : IAsyncDisposable
     /// <summary>Gets a value indicating whether the subscription has been stopped or disposed.</summary>
     public bool IsStopped => _stopped;
 
+    // Diagnostic only: whether any subscription has ever seen a signalStatus message this process.
+    private static int _signalSeen;
+
     /// <summary>
     /// Subscribes to a channel and waits for <c>subscriptionStart</c>.
     /// </summary>
@@ -228,6 +231,18 @@ internal sealed class HtspSubscription : IAsyncDisposable
                     break;
                 case "signalStatus":
                     Signal = ParseSignal(msg);
+
+                    // Once per process, so the settings page's empty Signal and SNR columns can be told
+                    // apart: either Tvheadend never reports signal for these inputs -- a network fed through
+                    // a pipe has none to report -- or it does and the columns are a fault at our end. Absent
+                    // this line, both look identical.
+                    if (Interlocked.Exchange(ref _signalSeen, 1) == 0)
+                    {
+                        _logger.LogInformation(
+                            "Tvheadend reports signal status (subscription {Id}: {Status}, SNR {Snr}, signal {Signal})",
+                            Id, Signal.Status, Signal.Snr, Signal.Signal);
+                    }
+
                     break;
                 case "muxpkt":
                     HandlePacket(msg);

@@ -154,8 +154,10 @@
                     <div class="fieldDescription">
                         Watching a channel gets Tvheadend's full patience because somebody is waiting for it; a
                         thumbnail is not worth that, and on a lineup where many channels cannot be tuned the failures
-                        are what a sweep spends its time on. Default <code>8</code>. Raise it if channels you know are
-                        fine keep timing out &mdash; how long a tune takes is a property of your tuners.
+                        are what a sweep spends its time on. Default <code>13</code>, which allows for moving to a new
+                        multiplex &mdash; the slow case, especially on a network that reaches its muxes through a pipe
+                        rather than straight off an RF input. Landing on a multiplex already tuned returns long before
+                        this matters, so the budget only costs time on channels that were going to fail anyway.
                     </div>
                 </div>
                 <div class="inputContainer">

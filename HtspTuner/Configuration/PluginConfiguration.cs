@@ -151,10 +151,16 @@ public class PluginConfiguration : BasePluginConfiguration
     /// Watching a channel gets Tvheadend's full patience -- 20 seconds, extended further while it reports it
     /// is still tuning -- because somebody is waiting for it. A thumbnail is not worth that: on a lineup
     /// where many channels cannot currently be tuned, the failures rather than the successes are what a
-    /// sweep spends its time on. How long a tune legitimately takes is a property of the hardware, though, so
-    /// raise this if channels you know are fine keep timing out. Clamped to 2..60.
+    /// sweep spends its time on.
     /// </remarks>
-    public int ProgramImageTuneSeconds { get; set; } = 8;
+    /// <remarks>
+    /// How long a tune legitimately takes is a property of the setup, not a constant. Moving to a new
+    /// multiplex is the slow part -- and a network that reaches its muxes through a pipe rather than straight
+    /// off an RF input has a process to start before anything can lock, which pure RF does not. Landing on a
+    /// multiplex already tuned is fast by comparison. The default allows for the slow case, since the fast
+    /// one returns long before the budget matters. Clamped to 2..60.
+    /// </remarks>
+    public int ProgramImageTuneSeconds { get; set; } = 13;
 
     /// <summary>
     /// Gets or sets a value indicating whether Live TV artwork belonging to programmes that no longer exist
