@@ -160,7 +160,7 @@ public class PluginConfiguration : BasePluginConfiguration
     /// multiplex already tuned is fast by comparison. The default allows for the slow case, since the fast
     /// one returns long before the budget matters. Clamped to 2..60.
     /// </remarks>
-    public int ProgramImageTuneSeconds { get; set; } = 15;
+    public int ProgramImageTuneSeconds { get; set; } = 20;
 
     /// <summary>
     /// Gets or sets a value indicating whether Live TV artwork belonging to programmes that no longer exist

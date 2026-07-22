@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Globalization;
 using Jellyfin.Data.Enums;
+using Jellyfin.Database.Implementations.Entities;
 using Jellyfin.Database.Implementations.Enums;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller;
@@ -38,6 +39,9 @@ public sealed class ProgramImageService : BackgroundService
 
     private static readonly TimeSpan ChannelIdCacheTtl = TimeSpan.FromMinutes(10);
 
+    // How recently somebody must have used the server for their home page to steer the sweep.
+    private static readonly TimeSpan ActiveUserWindow = TimeSpan.FromDays(30);
+
     // Ahead of everything on the page: a channel already being watched is the cheapest capture there is.
     private const int WatchedRank = -1;
 
@@ -59,6 +63,10 @@ public sealed class ProgramImageService : BackgroundService
 
     // One sweep at a time, whether it was the timer or somebody pressing the button.
     private readonly SemaphoreSlim _sweeping = new(1, 1);
+
+    // Cancels whichever sweep is running. A sweep holds tuners for minutes at a time, so somebody who
+    // wants them back should not have to wait for it or restart the server to get them.
+    private CancellationTokenSource? _running;
 
     // Set so the first sweep happens a few minutes in, not on the first tick and not a full hour later:
     // walking the whole metadata tree is not something to do while the server is still starting up, but
@@ -118,10 +126,17 @@ public sealed class ProgramImageService : BackgroundService
                 await _sweeping.WaitAsync(stoppingToken).ConfigureAwait(false);
                 try
                 {
-                    await ScanAsync(stoppingToken).ConfigureAwait(false);
+                    using var sweep = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+                    _running = sweep;
+                    await ScanAsync(sweep.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (!stoppingToken.IsCancellationRequested)
+                {
+                    _logger.LogInformation("Programme thumbnail sweep cancelled");
                 }
                 finally
                 {
+                    _running = null;
                     _sweeping.Release();
                 }
 
@@ -159,9 +174,15 @@ public sealed class ProgramImageService : BackgroundService
         // outlive the HTTP call that asked for it.
         _ = Task.Run(async () =>
         {
+            using var sweep = new CancellationTokenSource();
+            _running = sweep;
             try
             {
-                await ScanAsync(CancellationToken.None).ConfigureAwait(false);
+                await ScanAsync(sweep.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogInformation("Programme thumbnail sweep cancelled");
             }
             catch (Exception ex)
             {
@@ -169,6 +190,7 @@ public sealed class ProgramImageService : BackgroundService
             }
             finally
             {
+                _running = null;
                 _sweeping.Release();
             }
         });
@@ -176,8 +198,45 @@ public sealed class ProgramImageService : BackgroundService
         return true;
     }
 
+    /// <summary>Stops the sweep that is running, if there is one.</summary>
+    /// <remarks>
+    /// A sweep can hold tuners for minutes. Being able to start one on demand without being able to stop it
+    /// again leaves no way out short of restarting the server.
+    /// </remarks>
+    /// <returns>True if a sweep was running and has been asked to stop.</returns>
+    public bool TryCancelSweep()
+    {
+        var running = _running;
+        if (running is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            running.Cancel();
+            return true;
+        }
+        catch (ObjectDisposedException)
+        {
+            return false; // it finished between the check and the cancel
+        }
+    }
+
     // Zero switches automatic sweeps off; the button on the settings page still works. The wait itself is
     // short in that case, because it is only there to notice the setting being turned back on.
+    // Whose home page counts. A server accumulates accounts that stopped being used -- and a row belonging
+    // to somebody who last logged in a year ago should not decide what the tuners spend their time on ahead
+    // of the person watching today. Everybody counts if nobody has been active, since an idle server has no
+    // better answer.
+    private IReadOnlyList<User> ActiveUsers()
+    {
+        var all = _userManager.GetUsers().OrderByDescending(u => u.LastActivityDate ?? DateTime.MinValue).ToList();
+        var since = DateTime.UtcNow - ActiveUserWindow;
+        var active = all.Where(u => u.LastActivityDate >= since).ToList();
+        return active.Count > 0 ? active : all;
+    }
+
     private static TimeSpan ScanInterval()
     {
         var seconds = Plugin.Instance?.Configuration.ProgramImageScanSeconds ?? 181;
@@ -210,8 +269,10 @@ public sealed class ProgramImageService : BackgroundService
         // position in that list is exactly how prominent a tile is -- and the whole point of capturing is
         // the tiles somebody is looking at.
         var rank = new Dictionary<Guid, int>();
-        foreach (var user in _userManager.GetUsers())
+        var users = ActiveUsers();
+        for (var whose = 0; whose < users.Count; whose++)
         {
+            var user = users[whose];
             cancellationToken.ThrowIfCancellationRequested();
             var page = _liveTv.GetRecommendedProgramsInternal(
                 new InternalItemsQuery(user)
@@ -223,15 +284,29 @@ public sealed class ProgramImageService : BackgroundService
                 new DtoOptions(false),
                 cancellationToken);
 
-            foreach (var item in page.Items)
+            for (var position = 0; position < page.Items.Count; position++)
             {
-                if (!item.HasImage(ImageType.Primary, 0) && seen.Add(item.Id))
+                var item = page.Items[position];
+                if (item.HasImage(ImageType.Primary, 0))
                 {
-                    // Best position across users: a tile at the top of one person's row deserves that
-                    // treatment even if it is halfway down somebody else's.
-                    rank[item.Id] = missing.Count;
+                    continue;
+                }
+
+                if (seen.Add(item.Id))
+                {
                     missing.Add(item);
                 }
+
+                // Position within this person's row, and the best one across everybody: a tile at the top
+                // of one row deserves that treatment even if it is halfway down another. Ranking by
+                // position in the accumulated list instead put every one of the first user's tiles ahead
+                // of every one of the second's, however prominent the second's actually were.
+                //
+                // Position dominates; who it belongs to only breaks ties, most recently active first. Two
+                // people's rows both start at position zero, and without a tiebreak which of those two gets
+                // the tuner first comes down to dictionary order.
+                var score = (position * users.Count) + whose;
+                rank[item.Id] = Math.Min(rank.GetValueOrDefault(item.Id, int.MaxValue), score);
             }
         }
 

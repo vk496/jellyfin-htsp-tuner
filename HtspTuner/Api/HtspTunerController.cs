@@ -71,6 +71,30 @@ public class HtspTunerController : ControllerBase
         _programImages = programImages;
     }
 
+    /// <summary>Stops the programme-image sweep that is running.</summary>
+    /// <remarks>
+    /// A sweep holds tuners for minutes at a time. Being able to start one on demand without being able to
+    /// stop it leaves no way to get the tuners back short of restarting the server.
+    /// </remarks>
+    /// <returns>Whether a sweep was stopped.</returns>
+    /// <response code="200">The request was handled; the body says whether a sweep was running.</response>
+    [HttpPost("CancelCapture")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public ActionResult<CaptureNowResult> CancelCapture()
+    {
+        var cancelled = _programImages.TryCancelSweep();
+        if (cancelled)
+        {
+            _logger.LogInformation("Programme image sweep cancelled from the settings page");
+        }
+
+        return new CaptureNowResult
+        {
+            Started = cancelled,
+            Message = cancelled ? "Stopping the sweep." : "No sweep is running.",
+        };
+    }
+
     /// <summary>Runs a programme-image sweep now.</summary>
     /// <remarks>
     /// Captures are paced so as not to disturb anybody watching, which makes them slow by design. This is the

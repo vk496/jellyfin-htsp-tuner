@@ -155,7 +155,7 @@
                     <div class="fieldDescription">
                         Watching a channel gets Tvheadend's full patience because somebody is waiting for it; a
                         thumbnail is not worth that, and on a lineup where many channels cannot be tuned the failures
-                        are what a sweep spends its time on. Default <code>15</code>, which allows for moving to a new
+                        are what a sweep spends its time on. Default <code>20</code>, which allows for moving to a new
                         multiplex &mdash; the slow case, especially on a network that reaches its muxes through a pipe
                         rather than straight off an RF input. Landing on a multiplex already tuned returns long before
                         this matters, so the budget only costs time on channels that were going to fail anyway.
@@ -222,6 +222,9 @@
                     </button>
                     <button is="emby-button" type="button" id="CaptureNow" class="raised block">
                         <span>Capture programme images now</span>
+                    </button>
+                    <button is="emby-button" type="button" id="CancelCapture" class="raised block">
+                        <span>Stop the running capture</span>
                     </button>
                     <button is="emby-button" type="submit" class="raised button-submit block">
                         <span>Save</span>
@@ -392,6 +395,18 @@
                 }).then(function (r) {
                     showStatus(r.Message);
                 }).catch(function () { showStatus("Could not run the capture sweep."); });
+            });
+
+            document.querySelector("#CancelCapture").addEventListener("click", function () {
+                // A sweep holds tuners for minutes, so there has to be a way to take them back without
+                // restarting the server.
+                ApiClient.ajax({
+                    type: "POST",
+                    url: ApiClient.getUrl("HtspTuner/CancelCapture"),
+                    dataType: "json"
+                }).then(function (r) {
+                    showStatus(r.Message);
+                }).catch(function () { showStatus("Could not stop the capture sweep."); });
             });
 
             document.querySelector("#HtspTunerConfigForm").addEventListener("submit", function (e) {
