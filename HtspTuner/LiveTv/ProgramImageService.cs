@@ -22,9 +22,6 @@ namespace HtspTuner.LiveTv;
 /// </remarks>
 internal sealed class ProgramImageService : BackgroundService
 {
-    // The user asked for a minute; 61s keeps it from lining up with every other minute-based timer.
-    private static readonly TimeSpan ScanInterval = TimeSpan.FromSeconds(61);
-
     // Long enough that a channel which cannot produce a frame (scrambled, no signal, an odd codec) is not
     // retried on every scan, short enough that a temporary failure heals within an hour.
     private static readonly TimeSpan FailureCooldown = TimeSpan.FromMinutes(30);
@@ -59,9 +56,12 @@ internal sealed class ProgramImageService : BackgroundService
     /// <inheritdoc/>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using var timer = new PeriodicTimer(ScanInterval);
+        using var timer = new PeriodicTimer(ScanInterval());
         while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false))
         {
+            // Re-read every tick so changing the setting takes effect without restarting the server.
+            timer.Period = ScanInterval();
+
             try
             {
                 await ScanAsync(stoppingToken).ConfigureAwait(false);
@@ -77,6 +77,9 @@ internal sealed class ProgramImageService : BackgroundService
             }
         }
     }
+
+    private static TimeSpan ScanInterval()
+        => TimeSpan.FromSeconds(Math.Clamp(Plugin.Instance?.Configuration.ProgramImageScanSeconds ?? 61, 15, 3600));
 
     private async Task ScanAsync(CancellationToken cancellationToken)
     {
@@ -120,7 +123,14 @@ internal sealed class ProgramImageService : BackgroundService
             .Where(x => _cooldown.GetValueOrDefault(x.Channel) <= now)
             .DistinctBy(x => x.Channel, StringComparer.Ordinal);
 
-        var work = GroupByMux(candidates, x => _host.MuxOf(x.Channel)).Take(MaxCapturesPerScan).ToList();
+        // Shuffle before taking the scan's few: the candidate list comes back in a stable order, so always
+        // working from the front means the same handful of channels get every attempt and the tail is only
+        // ever reached once those succeed. Random picks spread the coverage instead. The chosen few are then
+        // ordered by mux, which is about how they are captured rather than which ones are captured.
+        var work = GroupByMux(
+                Shuffle(candidates.ToList()).Take(MaxCapturesPerScan),
+                x => _host.MuxOf(x.Channel))
+            .ToList();
 
         foreach (var (program, channelId) in work)
         {
@@ -130,6 +140,19 @@ internal sealed class ProgramImageService : BackgroundService
                 _cooldown[channelId] = now + FailureCooldown;
             }
         }
+    }
+
+    // Fisher-Yates over a copy. Random.Shared is fine here: this only decides which thumbnails get taken
+    // first, so it wants to be cheap and thread-safe, not unpredictable.
+    private static List<T> Shuffle<T>(List<T> items)
+    {
+        for (var i = items.Count - 1; i > 0; i--)
+        {
+            var j = Random.Shared.Next(i + 1);
+            (items[i], items[j]) = (items[j], items[i]);
+        }
+
+        return items;
     }
 
     /// <summary>Orders items so that ones sharing a mux end up next to each other.</summary>

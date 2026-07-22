@@ -641,7 +641,7 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
                 live = owned;
             }
 
-            return await ExtractFrameAsync(live, ct).ConfigureAwait(false);
+            return await ExtractFrameAsync(live, channelId, ct).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
@@ -673,7 +673,8 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
         }
     }
 
-    private async Task<string?> ExtractFrameAsync(HtspLiveStream live, CancellationToken cancellationToken)
+    private async Task<string?> ExtractFrameAsync(
+        HtspLiveStream live, string channelId, CancellationToken cancellationToken)
     {
         var video = live.MediaSource.MediaStreams
             ?.FirstOrDefault(s => s.Type == MediaBrowser.Model.Entities.MediaStreamType.Video);
@@ -692,7 +693,7 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
 
             // ffmpeg's own thumbnail filter picks the most representative frame of the slice, which beats
             // taking the first one: a channel that cuts to black or a station ident is common at any offset.
-            return await _mediaEncoder.ExtractVideoImage(
+            var frame = await _mediaEncoder.ExtractVideoImage(
                 samplePath,
                 "ts",
                 new MediaSourceInfo
@@ -705,10 +706,119 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
                 threedFormat: null,
                 offset: null,
                 cancellationToken).ConfigureAwait(false);
+
+            var width = video.Width ?? 0;
+            if (frame is null || width < 16)
+            {
+                return frame;
+            }
+
+            var branded = await OverlayLogoAsync(frame, channelId, width, cancellationToken).ConfigureAwait(false);
+            if (branded is null)
+            {
+                return frame; // no logo, or the overlay failed -- the bare frame is still worth having
+            }
+
+            TryDelete(frame);
+            return branded;
         }
         finally
         {
             TryDelete(samplePath);
+        }
+    }
+
+    // Stamp the channel's own logo into the corner of a captured frame, so a wall of thumbnails still says
+    // which channel each one is from. Sizes are a share of the frame width, which is the only way a single
+    // setting can hold for an SD, an HD and a UHD channel side by side.
+    private async Task<string?> OverlayLogoAsync(
+        string framePath, string channelId, int frameWidth, CancellationToken cancellationToken)
+    {
+        var cfg = Plugin.Instance!.Configuration;
+        var size = cfg.ProgramImageLogoPercent / 100d;
+        if (size <= 0)
+        {
+            return null; // logo overlay switched off
+        }
+
+        var icon = await GetChannelIconAsync(channelId, cancellationToken).ConfigureAwait(false);
+        if (icon is not { } logo || logo.ContentType == "image/svg+xml")
+        {
+            return null; // no icon, or a vector one ffmpeg cannot read
+        }
+
+        var logoPath = Path.Combine(Path.GetTempPath(), "htsp-logo-" + Guid.NewGuid().ToString("N") + ".img");
+        var outPath = Path.Combine(Path.GetTempPath(), "htsp-branded-" + Guid.NewGuid().ToString("N") + ".jpg");
+        try
+        {
+            await File.WriteAllBytesAsync(logoPath, logo.Data, cancellationToken).ConfigureAwait(false);
+
+            var margin = cfg.ProgramImageLogoMarginPercent / 100d;
+            var alpha = Math.Clamp(cfg.ProgramImageLogoShadowPercent / 100d, 0, 1);
+
+            // The logo is the one thing that needs a pixel size: ffmpeg's scale filter has no way to express
+            // "a share of that other input". Everything after it is relative to its own input, so the shadow
+            // and the placement stay correct whatever the frame turns out to be.
+            var logoWidth = Math.Max(16, (int)Math.Round(frameWidth * size));
+
+            // The blurred copy is PAD bigger on each side so the blur has room to spread past the logo edge.
+            // That makes it a different size from the logo, so it cannot be anchored the same way: pulling it
+            // back by the padding (0.25/1.5 of its own width) is what lines the two up again, and the small
+            // extra nudge is what makes it read as a cast shadow rather than a halo.
+            const double Pad = 0.25;
+            const double Nudge = 0.004;
+            var back = Pad / (1 + 2 * Pad);
+            var shadowInset = margin - Nudge;
+
+            var filter = string.Create(
+                CultureInfo.InvariantCulture,
+                $"[1:v]format=rgba,scale={logoWidth}:-1,split[l1][l2];"
+                + $"[l1]pad=iw*{1 + 2 * Pad}:ih*{1 + 2 * Pad}:iw*{Pad}:ih*{Pad}:color=#00000000,"
+                + $"colorchannelmixer=rr=0:gg=0:bb=0:aa={alpha},"
+                + $"boxblur=luma_radius=w*0.03:luma_power=2:alpha_radius=w*0.03:alpha_power=2[sh];"
+                + $"[0:v][sh]overlay=x=main_w-overlay_w*{1 - back}-main_w*{shadowInset}"
+                + $":y=main_h-overlay_h*{1 - back}-main_w*{shadowInset}[t];"
+                + $"[t][l2]overlay=x=main_w-overlay_w-main_w*{margin}:y=main_h-overlay_h-main_w*{margin}[o]");
+
+            var psi = new System.Diagnostics.ProcessStartInfo(_mediaEncoder.EncoderPath)
+            {
+                UseShellExecute = false,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+            };
+            foreach (var arg in new[]
+                     {
+                         "-y", "-v", "error", "-i", framePath, "-i", logoPath,
+                         "-filter_complex", filter, "-map", "[o]", "-frames:v", "1", "-q:v", "2", outPath,
+                     })
+            {
+                psi.ArgumentList.Add(arg);
+            }
+
+            using var ffmpeg = System.Diagnostics.Process.Start(psi)
+                               ?? throw new InvalidOperationException("ffmpeg did not start");
+            var stderr = await ffmpeg.StandardError.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+            await ffmpeg.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+
+            if (ffmpeg.ExitCode != 0 || !File.Exists(outPath))
+            {
+                _logger.LogDebug(
+                    "Logo overlay failed for channel {Channel} (exit {Code}): {Error}",
+                    channelId, ffmpeg.ExitCode, stderr.Trim());
+                return null;
+            }
+
+            return outPath;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogDebug(ex, "Could not overlay the channel logo for {Channel}", channelId);
+            TryDelete(outPath);
+            return null;
+        }
+        finally
+        {
+            TryDelete(logoPath);
         }
     }
 

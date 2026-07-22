@@ -86,6 +86,36 @@
                     </div>
                 </div>
                 <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="ProgramImageLogoPercent">Channel logo size (% of frame width)</label>
+                    <input is="emby-input" type="number" id="ProgramImageLogoPercent" min="0" max="60" />
+                    <div class="fieldDescription">
+                        The channel's logo is stamped into the bottom-right corner of the captured frame, so a row of
+                        thumbnails still says which channel each one came from. A percentage, not pixels, so it looks
+                        the same on SD, HD and UHD channels sitting side by side. <code>0</code> leaves frames unbranded.
+                    </div>
+                </div>
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="ProgramImageLogoMarginPercent">Logo margin (% of frame width)</label>
+                    <input is="emby-input" type="number" id="ProgramImageLogoMarginPercent" min="0" max="25" />
+                    <div class="fieldDescription">Gap between the logo and the frame edge.</div>
+                </div>
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="ProgramImageLogoShadowPercent">Logo shadow opacity (%)</label>
+                    <input is="emby-input" type="number" id="ProgramImageLogoShadowPercent" min="0" max="100" />
+                    <div class="fieldDescription">
+                        Worth keeping: the logo lands on whatever the broadcast happened to be showing, and a dark or
+                        busy frame swallows its edges without one. Blur and offset scale with the logo automatically.
+                    </div>
+                </div>
+                <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="ProgramImageScanSeconds">Scan interval (seconds)</label>
+                    <input is="emby-input" type="number" id="ProgramImageScanSeconds" min="15" max="3600" />
+                    <div class="fieldDescription">
+                        How often to look for programmes still missing a picture. A scan takes at most a few frames, and
+                        one that finds nothing costs a single database query. Default <code>61</code>.
+                    </div>
+                </div>
+                <div class="inputContainer">
                     <label class="inputLabel inputLabelUnfocused" for="ProgramImageCandidates">Programmes considered per scan</label>
                     <input is="emby-input" type="number" id="ProgramImageCandidates" min="0" max="10000" />
                     <div class="fieldDescription">
@@ -148,7 +178,8 @@
             var pluginId = "48472334-959b-4838-a963-3a92e5a603d1";
             var fields = ["Host", "HtspPort", "Username", "Password", "Profile",
                 "SubscriptionWeight", "MaxBufferMb", "StreamBaseUrl", "AutoGuideRefreshMinutes",
-                "AnalyzeDurationMs", "ProgramImageCandidates"];
+                "AnalyzeDurationMs", "ProgramImageCandidates", "ProgramImageScanSeconds",
+                "ProgramImageLogoPercent", "ProgramImageLogoMarginPercent", "ProgramImageLogoShadowPercent"];
             var checks = ["ImportChannelTags", "CaptureProgramImages"];
 
             function load(cfg) {
@@ -168,6 +199,10 @@
                 cfg.AutoGuideRefreshMinutes = parseInt(document.getElementById("AutoGuideRefreshMinutes").value, 10) || 0;
                 cfg.AnalyzeDurationMs = parseInt(document.getElementById("AnalyzeDurationMs").value, 10) || 2000;
                 cfg.ProgramImageCandidates = parseInt(document.getElementById("ProgramImageCandidates").value, 10) || 0;
+                cfg.ProgramImageScanSeconds = parseInt(document.getElementById("ProgramImageScanSeconds").value, 10) || 61;
+                cfg.ProgramImageLogoPercent = parseInt(document.getElementById("ProgramImageLogoPercent").value, 10) || 0;
+                cfg.ProgramImageLogoMarginPercent = parseInt(document.getElementById("ProgramImageLogoMarginPercent").value, 10) || 0;
+                cfg.ProgramImageLogoShadowPercent = parseInt(document.getElementById("ProgramImageLogoShadowPercent").value, 10) || 0;
                 checks.forEach(function (f) { cfg[f] = document.getElementById(f).checked; });
                 return cfg;
             }

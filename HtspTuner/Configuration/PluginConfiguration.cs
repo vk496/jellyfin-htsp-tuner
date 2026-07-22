@@ -88,6 +88,39 @@ public class PluginConfiguration : BasePluginConfiguration
     /// </remarks>
     public int ProgramImageCandidates { get; set; } = 200;
 
+    /// <summary>Gets or sets how often, in seconds, the plugin looks for programmes that need a picture.</summary>
+    /// <remarks>
+    /// This is a scan interval, not a capture rate: a scan only ever takes a few frames, and one that finds
+    /// nothing missing costs a single database query. Clamped to 15..3600.
+    /// </remarks>
+    public int ProgramImageScanSeconds { get; set; } = 61;
+
+    /// <summary>
+    /// Gets or sets the width of the channel logo stamped into a captured frame, as a percentage of the
+    /// frame width. Zero leaves the frame unbranded.
+    /// </summary>
+    /// <remarks>
+    /// A percentage rather than a pixel size because channels are not all the same resolution: one setting
+    /// has to look the same on an SD, an HD and a UHD capture sitting next to each other in the same row.
+    /// The logo goes in the bottom-right corner, where broadcasters' own on-screen graphics rarely sit.
+    /// </remarks>
+    public int ProgramImageLogoPercent { get; set; } = 22;
+
+    /// <summary>
+    /// Gets or sets the gap between the channel logo and the frame edge, as a percentage of the frame width.
+    /// </summary>
+    public int ProgramImageLogoMarginPercent { get; set; } = 3;
+
+    /// <summary>
+    /// Gets or sets the opacity of the drop shadow behind the channel logo, as a percentage. Zero removes it.
+    /// </summary>
+    /// <remarks>
+    /// Worth keeping: a logo is dropped onto whatever the broadcast happened to be showing, so without a
+    /// shadow a dark or busy frame swallows its edges. The blur and offset scale with the logo, so they need
+    /// no settings of their own.
+    /// </remarks>
+    public int ProgramImageLogoShadowPercent { get; set; } = 75;
+
     /// <summary>
     /// Gets or sets the minimum age, in minutes, before a Tvheadend EPG push may trigger a Jellyfin guide
     /// refresh. Zero disables it entirely, leaving the guide to Jellyfin's own schedule.
