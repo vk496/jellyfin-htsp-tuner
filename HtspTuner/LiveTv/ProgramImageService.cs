@@ -369,9 +369,14 @@ public sealed class ProgramImageService : BackgroundService
                      ChannelIds = guids,
                  }))
         {
+            // Re-shoot only pictures we took ourselves. A programme that already has artwork got it from the
+            // broadcaster's EPG, which is a better picture than any frame we could grab and is not ours to
+            // replace. _refreshedAt is what says "this one is ours" -- and because it does not survive a
+            // restart, an unknown programme is left alone rather than assumed to be a previous capture.
             var due = !item.HasImage(ImageType.Primary, 0)
                       || (refresh > 0
-                          && now - _refreshedAt.GetValueOrDefault(item.Id) >= TimeSpan.FromMinutes(refresh));
+                          && _refreshedAt.TryGetValue(item.Id, out var taken)
+                          && now - taken >= TimeSpan.FromMinutes(refresh));
             if (due && seen.Add(item.Id))
             {
                 missing.Add(item);

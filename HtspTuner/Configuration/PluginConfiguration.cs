@@ -177,7 +177,8 @@ public class PluginConfiguration : BasePluginConfiguration
     /// A channel already being streamed is free to sample: the bytes are in memory, no tuner is touched and
     /// nothing can be preempted. And a single still is a poor summary of an hour-long programme -- the frame
     /// caught in the opening seconds is usually the least representative one there is. Each new picture
-    /// replaces the last, so this does not accumulate on disk.
+    /// replaces the last, so this does not accumulate on disk. Only pictures the plugin took itself are
+    /// replaced: a programme the broadcaster supplied artwork for keeps it.
     /// </remarks>
     public int WatchedRefreshMinutes { get; set; } = 3;
 
