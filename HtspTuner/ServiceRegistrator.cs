@@ -26,9 +26,11 @@ public class ServiceRegistrator : IPluginServiceRegistrator
         serviceCollection.AddSingleton<IListingsProvider, HtspListingsProvider>();
 
         // Fills in the blank programme tiles on the Live TV home page from the broadcast itself. A plain
-        // hosted service rather than an IScheduledTask: it runs every 61s, and a scheduled task logs a line
-        // per run, which would bury the log in an hour.
-        serviceCollection.AddHostedService<ProgramImageService>();
+        // hosted service rather than an IScheduledTask, whose per-run log line would bury the log.
+        // Registered both ways on purpose: the hosted service runs the schedule, and the same instance is
+        // resolvable so the settings page's "capture now" button drives the one that holds the state.
+        serviceCollection.AddSingleton<ProgramImageService>();
+        serviceCollection.AddHostedService(sp => sp.GetRequiredService<ProgramImageService>());
 
         // NOTE: no ILiveTvService is registered. There was one (HtspLiveTvService): a second, config-only way
         // to use the plugin that listed channels without a tuner and duplicated the tuner path. It has since

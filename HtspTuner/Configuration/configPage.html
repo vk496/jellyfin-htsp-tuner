@@ -161,8 +161,10 @@
                     <label class="inputLabel inputLabelUnfocused" for="ProgramImageScanSeconds">Scan interval (seconds)</label>
                     <input is="emby-input" type="number" id="ProgramImageScanSeconds" min="15" max="3600" />
                     <div class="fieldDescription">
-                        How often to look for programmes still missing a picture. A scan takes at most a few frames, and
-                        one that finds nothing costs a single database query. Default <code>61</code>.
+                        The gap between sweeps &mdash; a sweep that runs long is never followed immediately by another.
+                        Default <code>181</code>, deliberately unhurried: nothing here is urgent and the tuners are
+                        better spent on whoever is watching. Use the <em>Capture programme images now</em> button when
+                        the TV is free.
                     </div>
                 </div>
                 <div class="inputContainer">
@@ -204,6 +206,9 @@
                 <div>
                     <button is="emby-button" type="button" id="TestConnection" class="raised block">
                         <span>Test connection</span>
+                    </button>
+                    <button is="emby-button" type="button" id="CaptureNow" class="raised block">
+                        <span>Capture programme images now</span>
                     </button>
                     <button is="emby-button" type="submit" class="raised button-submit block">
                         <span>Save</span>
@@ -359,6 +364,20 @@
                 }).then(function (r) {
                     showStatus(r.Ok ? ("Connected: " + r.Message) : ("Failed: " + r.Message));
                 }).catch(function () { showStatus("Failed to reach Tvheadend."); });
+            });
+
+            document.querySelector("#CaptureNow").addEventListener("click", function () {
+                // Captures are deliberately unhurried and stand aside for anyone watching, so this is the
+                // way to say "the TV is free, do it now". The sweep runs in the background -- it takes
+                // minutes, which is far longer than a browser will hold a request open.
+                showStatus("Starting…");
+                ApiClient.ajax({
+                    type: "POST",
+                    url: ApiClient.getUrl("HtspTuner/CaptureImages"),
+                    dataType: "json"
+                }).then(function (r) {
+                    showStatus(r.Message);
+                }).catch(function () { showStatus("Could not run the capture sweep."); });
             });
 
             document.querySelector("#HtspTunerConfigForm").addEventListener("submit", function (e) {

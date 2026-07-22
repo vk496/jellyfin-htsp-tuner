@@ -36,6 +36,16 @@ public class TestConnectionResult
     public string Message { get; set; } = string.Empty;
 }
 
+/// <summary>The outcome of asking for a capture sweep.</summary>
+public class CaptureNowResult
+{
+    /// <summary>Gets or sets a value indicating whether a sweep was started, as opposed to one already running.</summary>
+    public bool Started { get; set; }
+
+    /// <summary>Gets or sets a human-readable message describing the outcome.</summary>
+    public string Message { get; set; } = string.Empty;
+}
+
 /// <summary>
 /// Plugin REST API: a connection test the config page can call, so failures show in the UI instead of
 /// the server log.
@@ -47,14 +57,50 @@ public class HtspTunerController : ControllerBase
 {
     private readonly ILogger<HtspTunerController> _logger;
     private readonly HtspTunerHost _tunerHost;
+    private readonly ProgramImageService _programImages;
 
     /// <summary>Initializes a new instance of the <see cref="HtspTunerController"/> class.</summary>
     /// <param name="logger">The logger.</param>
     /// <param name="tunerHost">The tuner host, used to fetch channel icons over HTSP.</param>
-    public HtspTunerController(ILogger<HtspTunerController> logger, HtspTunerHost tunerHost)
+    /// <param name="programImages">The programme-image sweeper, so the settings page can run one on demand.</param>
+    public HtspTunerController(
+        ILogger<HtspTunerController> logger, HtspTunerHost tunerHost, ProgramImageService programImages)
     {
         _logger = logger;
         _tunerHost = tunerHost;
+        _programImages = programImages;
+    }
+
+    /// <summary>Runs a programme-image sweep now.</summary>
+    /// <remarks>
+    /// Captures are paced so as not to disturb anybody watching, which makes them slow by design. This is the
+    /// way to say "do it now, the TV is free" -- and, because it reports what happened, a way to find out
+    /// whether the feature is behind a playback problem without waiting for the next sweep.
+    /// </remarks>
+    /// <returns>Whether a sweep was started.</returns>
+    /// <response code="200">The request was handled; the body says whether a sweep was started.</response>
+    [HttpPost("CaptureImages")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public ActionResult<CaptureNowResult> CaptureImagesNow()
+    {
+        if (Plugin.Instance?.Configuration.CaptureProgramImages != true)
+        {
+            return new CaptureNowResult { Message = "Programme image capture is switched off." };
+        }
+
+        var started = _programImages.TryStartSweep();
+        if (started)
+        {
+            _logger.LogInformation("Programme image sweep requested from the settings page");
+        }
+
+        return new CaptureNowResult
+        {
+            Started = started,
+            Message = started
+                ? "Sweep started. It runs for a few minutes; the server log reports what it captured."
+                : "A sweep is already running.",
+        };
     }
 
     /// <summary>

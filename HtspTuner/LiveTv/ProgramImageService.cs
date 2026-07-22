@@ -23,7 +23,7 @@ namespace HtspTuner.LiveTv;
 /// Jellyfin to refresh the guide more often would not help, because there is nothing new to fetch and a
 /// refresh costs minutes. A still from the live broadcast is the only picture that exists, so take one.
 /// </remarks>
-internal sealed class ProgramImageService : BackgroundService
+public sealed class ProgramImageService : BackgroundService
 {
     // Jellyfin never deletes a programme's artwork folder. CleanDatabase drops the item with
     // DeleteFileLocation=false, and LibraryManager only clears an item's metadata folder when the item is
@@ -49,6 +49,9 @@ internal sealed class ProgramImageService : BackgroundService
     private readonly IProviderManager _providerManager;
     private readonly ILogger<ProgramImageService> _logger;
     private readonly ConcurrentDictionary<string, DateTime> _cooldown = new();
+
+    // One sweep at a time, whether it was the timer or somebody pressing the button.
+    private readonly SemaphoreSlim _sweeping = new(1, 1);
 
     // Set so the first sweep happens a few minutes in, not on the first tick and not a full hour later:
     // walking the whole metadata tree is not something to do while the server is still starting up, but
@@ -100,7 +103,16 @@ internal sealed class ProgramImageService : BackgroundService
 
             try
             {
-                await ScanAsync(stoppingToken).ConfigureAwait(false);
+                await _sweeping.WaitAsync(stoppingToken).ConfigureAwait(false);
+                try
+                {
+                    await ScanAsync(stoppingToken).ConfigureAwait(false);
+                }
+                finally
+                {
+                    _sweeping.Release();
+                }
+
                 await CleanOrphanedImagesAsync(stoppingToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
@@ -113,6 +125,43 @@ internal sealed class ProgramImageService : BackgroundService
                 _logger.LogWarning(ex, "Programme thumbnail scan failed");
             }
         }
+    }
+
+    /// <summary>Starts a sweep now, unless one is already running.</summary>
+    /// <remarks>
+    /// For the button on the settings page. Captures are paced so as not to disturb anybody watching, which
+    /// makes them slow by design -- so there has to be a way to say "do it now, I am not using the TV".
+    /// It returns as soon as the sweep is under way rather than waiting for it: a full sweep runs for
+    /// minutes, which no browser will hold a request open for. Progress goes to the log, as it does for a
+    /// scheduled sweep.
+    /// </remarks>
+    /// <returns>True if a sweep was started, false if one was already in progress.</returns>
+    public bool TryStartSweep()
+    {
+        if (!_sweeping.Wait(0))
+        {
+            return false;
+        }
+
+        // Detached from the caller's request, and from its cancellation token with it: the sweep should
+        // outlive the HTTP call that asked for it.
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await ScanAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Requested programme thumbnail sweep failed");
+            }
+            finally
+            {
+                _sweeping.Release();
+            }
+        });
+
+        return true;
     }
 
     private static TimeSpan ScanInterval()

@@ -89,10 +89,12 @@ public class PluginConfiguration : BasePluginConfiguration
 
     /// <summary>Gets or sets how often, in seconds, the plugin looks for programmes that need a picture.</summary>
     /// <remarks>
-    /// This is a scan interval, not a capture rate: a scan only ever takes a few frames, and one that finds
-    /// nothing missing costs a single database query. Clamped to 15..3600.
+    /// This is a scan interval, not a capture rate, and it is the gap between sweeps rather than a rate to
+    /// keep up with -- a sweep that runs long is never followed immediately by another. A sweep that finds
+    /// nothing missing costs a single database query. The default is deliberately unhurried: nothing here is
+    /// urgent, and the tuners are better spent on whoever is actually watching. Clamped to 15..3600.
     /// </remarks>
-    public int ProgramImageScanSeconds { get; set; } = 61;
+    public int ProgramImageScanSeconds { get; set; } = 181;
 
     /// <summary>
     /// Gets or sets the width of the channel logo stamped into a captured frame, as a percentage of the
