@@ -616,6 +616,7 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
         var ct = budget.Token;
 
         HtspLiveStream? owned = null;
+        HtspSubscription? orphan = null;
         try
         {
             if (live is null)
@@ -661,16 +662,21 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
                 using var tuneBudget = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 tuneBudget.CancelAfter(TimeSpan.FromSeconds(
                     Math.Clamp(Plugin.Instance!.Configuration.ProgramImageTuneSeconds, 2, 60)));
-                var subscription = await client
+                orphan = await client
                     .SubscribeAsync(tvhChannelId, tuneBudget.Token, CaptureWeight).ConfigureAwait(false);
 
                 // Comfortably more than the sample we are about to take: a ring smaller than the read would
                 // lap the reader mid-capture and hand ffmpeg a TS with a hole in it.
-                owned = new HtspLiveStream(client, subscription, _appHost, _mediaEncoder, 4 << 20, _logger)
+                owned = new HtspLiveStream(client, orphan, _appHost, _mediaEncoder, 4 << 20, _logger)
                 {
                     OriginalStreamId = channelId,
                     SkipProbe = true,
                 };
+
+                // The stream owns the subscription from here, and closing it unsubscribes. Until this line
+                // nothing else would have: a throw in between -- an unusual stream table upsetting the muxer,
+                // say -- used to leave Tvheadend holding a subscription for good.
+                orphan = null;
                 await owned.Open(ct).ConfigureAwait(false);
                 RememberMux(channelId, owned);
                 live = owned;
@@ -697,10 +703,29 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
         }
         finally
         {
+            if (orphan is not null)
+            {
+                await UnsubscribeQuietlyAsync(channelId, orphan).ConfigureAwait(false);
+            }
+
             if (owned is not null)
             {
                 await owned.Close().ConfigureAwait(false);
             }
+        }
+    }
+
+    private async Task UnsubscribeQuietlyAsync(string channelId, HtspSubscription subscription)
+    {
+        try
+        {
+            var (tuner, _) = Resolve(channelId);
+            var client = await ClientForAsync(tuner, CancellationToken.None).ConfigureAwait(false);
+            await client.UnsubscribeAsync(subscription).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Could not release the subscription for channel {Channel}", channelId);
         }
     }
 
