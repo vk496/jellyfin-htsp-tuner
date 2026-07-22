@@ -160,7 +160,7 @@ public class PluginConfiguration : BasePluginConfiguration
     /// multiplex already tuned is fast by comparison. The default allows for the slow case, since the fast
     /// one returns long before the budget matters. Clamped to 2..60.
     /// </remarks>
-    public int ProgramImageTuneSeconds { get; set; } = 13;
+    public int ProgramImageTuneSeconds { get; set; } = 15;
 
     /// <summary>
     /// Gets or sets a value indicating whether Live TV artwork belonging to programmes that no longer exist
@@ -190,17 +190,21 @@ public class PluginConfiguration : BasePluginConfiguration
 
     /// <summary>
     /// Gets or sets a value indicating whether captures that would need to tune a channel are deferred while
-    /// somebody is watching. Captures from streams already open are unaffected.
+    /// somebody is watching. Captures from streams already open are unaffected either way.
     /// </summary>
     /// <remarks>
-    /// Subscription weight stops a capture taking a tuner away from a viewer, but it cannot make tuning
-    /// free. On a satellite install the tuners share an LNB, so moving one to another transponder means
-    /// DiSEqC traffic and a polarisation or band change on the shared cable; and the two ffmpeg runs a
-    /// capture needs compete with whatever is transcoding the stream being watched. Neither shows up as a
-    /// lost subscription -- they show up as somebody's picture stuttering. There is nothing urgent about a
-    /// thumbnail, so by default it waits.
+    /// Off by default: a server with tuners to spare has no reason to leave them idle, and subscription
+    /// weight already guarantees the thing that matters -- a capture holds its tuner at the lowest weight
+    /// Tvheadend accepts, so a viewer starting a channel takes it back rather than waiting.
     /// </remarks>
-    public bool PauseCapturesWhileWatching { get; set; } = true;
+    /// <remarks>
+    /// Turn it on if captures appear to disturb playback. Weight covers the tuner itself but not everything
+    /// around it: on a satellite install the tuners share an LNB, so moving one to another transponder means
+    /// DiSEqC traffic and a polarisation or band change on the shared cable, and each capture runs two
+    /// ffmpeg processes that compete with whatever is transcoding. Neither shows up as a lost subscription;
+    /// they show up as somebody's picture stuttering.
+    /// </remarks>
+    public bool PauseCapturesWhileWatching { get; set; }
 
     /// <summary>
     /// Gets or sets the minimum age, in minutes, before a Tvheadend EPG push may trigger a Jellyfin guide

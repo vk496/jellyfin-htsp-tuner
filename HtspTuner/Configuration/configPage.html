@@ -111,12 +111,13 @@
                 <div class="checkboxContainer checkboxContainer-withDescription">
                     <label><input is="emby-checkbox" type="checkbox" id="PauseCapturesWhileWatching" /><span>Pause captures that need a tuner while somebody is watching</span></label>
                     <div class="fieldDescription">
-                        Subscription weight stops a capture taking a tuner off a viewer, but it cannot make tuning
-                        free: on a satellite install the tuners share an LNB, so moving one to another transponder
-                        means DiSEqC traffic and a polarisation change on the shared cable, and each capture runs two
-                        ffmpeg processes that compete with whatever is transcoding. That shows up as somebody's picture
-                        stuttering, not as a lost subscription. Captures from streams already open are unaffected &mdash;
-                        those touch no tuner at all.
+                        Off by default &mdash; a server with tuners to spare has no reason to leave them idle, and a
+                        capture holds its tuner at the lowest weight Tvheadend accepts, so a viewer starting a channel
+                        takes it back rather than waiting. Turn it on if captures appear to disturb playback: weight
+                        covers the tuner but not everything around it, since on a shared LNB moving a tuner to another
+                        transponder means DiSEqC traffic and a polarisation change, and each capture runs two ffmpeg
+                        processes alongside whatever is transcoding. Captures from streams already open are unaffected
+                        either way &mdash; those touch no tuner at all.
                     </div>
                 </div>
                 <div class="inputContainer">
@@ -154,7 +155,7 @@
                     <div class="fieldDescription">
                         Watching a channel gets Tvheadend's full patience because somebody is waiting for it; a
                         thumbnail is not worth that, and on a lineup where many channels cannot be tuned the failures
-                        are what a sweep spends its time on. Default <code>13</code>, which allows for moving to a new
+                        are what a sweep spends its time on. Default <code>15</code>, which allows for moving to a new
                         multiplex &mdash; the slow case, especially on a network that reaches its muxes through a pipe
                         rather than straight off an RF input. Landing on a multiplex already tuned returns long before
                         this matters, so the budget only costs time on channels that were going to fail anyway.
