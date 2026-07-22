@@ -122,6 +122,18 @@ public class PluginConfiguration : BasePluginConfiguration
     public int ProgramImageLogoShadowPercent { get; set; } = 75;
 
     /// <summary>
+    /// Gets or sets how long, in minutes, a channel that failed to produce a frame is skipped for. Zero
+    /// retries it on every scan.
+    /// </summary>
+    /// <remarks>
+    /// Parking stops a sweep spending its whole budget on the same dead channels, which matters on a lineup
+    /// where most channels cannot be tuned. It costs the opposite case: a channel that was only briefly
+    /// unavailable -- the tuners busy with a guide refresh, a moment of bad signal -- stays blank for the
+    /// whole park. Zero by default, because a retry only costs one short tune.
+    /// </remarks>
+    public int ProgramImageParkMinutes { get; set; }
+
+    /// <summary>
     /// Gets or sets the minimum age, in minutes, before a Tvheadend EPG push may trigger a Jellyfin guide
     /// refresh. Zero disables it entirely, leaving the guide to Jellyfin's own schedule.
     /// </summary>

@@ -22,10 +22,6 @@ namespace HtspTuner.LiveTv;
 /// </remarks>
 internal sealed class ProgramImageService : BackgroundService
 {
-    // Long enough that a channel which cannot produce a frame (scrambled, no signal, an odd codec) is not
-    // retried on every scan, short enough that a temporary failure heals within an hour.
-    private static readonly TimeSpan FailureCooldown = TimeSpan.FromMinutes(30);
-
     private readonly HtspTunerHost _host;
     private readonly ILibraryManager _library;
     private readonly IProviderManager _providerManager;
@@ -148,7 +144,15 @@ internal sealed class ProgramImageService : BackgroundService
             }
             else
             {
-                _cooldown[channel.Id] = DateTime.UtcNow + FailureCooldown;
+                // Parking a channel that just failed stops a sweep spending its whole budget on the same
+                // dead channels, but it also means a channel that was only briefly unavailable -- a guide
+                // refresh holding the tuners, a transient loss of signal -- stays blank for the whole park.
+                // Off by default for that reason: a retry costs one short tune.
+                var park = Plugin.Instance?.Configuration.ProgramImageParkMinutes ?? 0;
+                if (park > 0)
+                {
+                    _cooldown[channel.Id] = DateTime.UtcNow + TimeSpan.FromMinutes(park);
+                }
                 reasons[error] = reasons.GetValueOrDefault(error) + 1;
             }
         }

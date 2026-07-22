@@ -108,6 +108,16 @@
                     </div>
                 </div>
                 <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="ProgramImageParkMinutes">Park a failed channel for (minutes)</label>
+                    <input is="emby-input" type="number" id="ProgramImageParkMinutes" min="0" max="1440" />
+                    <div class="fieldDescription">
+                        How long to skip a channel that produced no frame. <code>0</code> (default) retries it every
+                        scan, which is what you want if failures are temporary &mdash; tuners busy with a guide
+                        refresh, a moment of bad signal. Raise it if most of your lineup cannot be tuned and the
+                        sweep is spending its time on the same dead channels.
+                    </div>
+                </div>
+                <div class="inputContainer">
                     <label class="inputLabel inputLabelUnfocused" for="ProgramImageScanSeconds">Scan interval (seconds)</label>
                     <input is="emby-input" type="number" id="ProgramImageScanSeconds" min="15" max="3600" />
                     <div class="fieldDescription">
@@ -179,7 +189,7 @@
             var fields = ["Host", "HtspPort", "Username", "Password", "Profile",
                 "SubscriptionWeight", "MaxBufferMb", "StreamBaseUrl", "AutoGuideRefreshMinutes",
                 "AnalyzeDurationMs", "ProgramImageCandidates", "ProgramImageScanSeconds",
-                "ProgramImageLogoPercent", "ProgramImageLogoMarginPercent", "ProgramImageLogoShadowPercent"];
+                "ProgramImageLogoPercent", "ProgramImageLogoMarginPercent", "ProgramImageLogoShadowPercent", "ProgramImageParkMinutes"];
             var checks = ["ImportChannelTags", "CaptureProgramImages"];
 
             function load(cfg) {
@@ -203,6 +213,7 @@
                 cfg.ProgramImageLogoPercent = parseInt(document.getElementById("ProgramImageLogoPercent").value, 10) || 0;
                 cfg.ProgramImageLogoMarginPercent = parseInt(document.getElementById("ProgramImageLogoMarginPercent").value, 10) || 0;
                 cfg.ProgramImageLogoShadowPercent = parseInt(document.getElementById("ProgramImageLogoShadowPercent").value, 10) || 0;
+                cfg.ProgramImageParkMinutes = parseInt(document.getElementById("ProgramImageParkMinutes").value, 10) || 0;
                 checks.forEach(function (f) { cfg[f] = document.getElementById(f).checked; });
                 return cfg;
             }

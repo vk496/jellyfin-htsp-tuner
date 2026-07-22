@@ -148,12 +148,17 @@ internal sealed class HtspSubscription : IAsyncDisposable
         try
         {
             var start = await tcs.Task.WaitAsync(timeoutCts.Token).ConfigureAwait(false);
+            // The name ("12130H"), not the uuid: the uuid is an identifier Tvheadend assigns each mux object
+            // and reads as a meaningless hash, whereas the name is the frequency you can match against the
+            // network's mux list. The network comes with it because a name is only unique within one.
+            var si = start.SourceInfo;
             _logger.LogInformation(
-                "Subscription {Id} started on channel {Channel}: {StreamCount} streams, mux {Mux}",
+                "Subscription {Id} started on channel {Channel}: {StreamCount} streams, mux {Mux} on {Network}",
                 Id,
                 channelId,
                 start.Streams.Count,
-                start.SourceInfo?.MuxUuid);
+                si?.Mux ?? si?.MuxUuid,
+                si?.Network ?? si?.NetworkUuid);
             return start;
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
