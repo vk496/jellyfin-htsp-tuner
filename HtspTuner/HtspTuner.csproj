@@ -3,9 +3,9 @@
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <RootNamespace>HtspTuner</RootNamespace>
-    <AssemblyVersion>1.0.0.20</AssemblyVersion>
-    <FileVersion>1.0.0.20</FileVersion>
-    <Version>1.0.0.20</Version>
+    <AssemblyVersion>1.0.0.21</AssemblyVersion>
+    <FileVersion>1.0.0.21</FileVersion>
+    <Version>1.0.0.21</Version>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>

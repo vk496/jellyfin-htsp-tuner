@@ -33,6 +33,10 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
     // in-tree caller uses are out of reach here.
     private const string RefreshGuideTaskKey = "RefreshGuide";
 
+    // Weight a background frame grab subscribes with: the lowest Tvheadend accepts, so it is always the
+    // first thing dropped when a tuner is contended. A thumbnail is never worth interrupting anything.
+    private const int CaptureWeight = 1;
+
     private readonly IConfigurationManager _config;
     private readonly IServerApplicationHost _appHost;
     private readonly IMediaEncoder _mediaEncoder;
@@ -579,9 +583,6 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
     /// <returns>The path to a temporary image file, which the caller owns and must delete, or null.</returns>
     internal async Task<string?> CaptureFrameAsync(string channelId, CancellationToken cancellationToken)
     {
-        // Lowest weight Tvheadend accepts: a thumbnail is never worth interrupting anything.
-        const int CaptureWeight = 1;
-
         var live = _live.GetValueOrDefault(channelId);
         if (live is { IsAlive: false })
         {
@@ -589,20 +590,45 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
             live = null;
         }
 
+        // One budget for the whole capture, not one per step. A cold channel chains several waits that each
+        // have their own generous timeout -- the subscribe, the first byte, the one-off probe, the sample --
+        // and a channel Tvheadend cannot tune sits through all of them. Unbounded, four dead channels turn a
+        // 61s scan into a four-minute one.
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        budget.CancelAfter(TimeSpan.FromSeconds(30));
+        var ct = budget.Token;
+
         HtspLiveStream? owned = null;
         try
         {
             if (live is null)
             {
                 var (tuner, tvhChannelId) = Resolve(channelId);
-                var client = await ClientForAsync(tuner, cancellationToken).ConfigureAwait(false);
+                var client = await ClientForAsync(tuner, ct).ConfigureAwait(false);
                 if (client.GetChannel(tvhChannelId)?.IsRadio != false)
                 {
                     return null; // no video to grab, and an unknown channel is not worth tuning
                 }
 
+                // Tuner priority is entirely Tvheadend's to decide, and weight is the only lever HTSP gives
+                // us: it carries no inventory of tuners, so the plugin cannot know whether the server has one
+                // or ten, or how many are free. Subscribing a frame grab below the weight used for watching
+                // is what makes that unnecessary — Tvheadend hands a contended tuner to the heavier
+                // subscription, so a viewer starting a channel takes ours away mid-capture and we simply come
+                // back later. If the two weights were equal that guarantee would be gone, and a background
+                // thumbnail is never worth making somebody wait for, so in that case do not capture at all.
+                var weight = OptionsFor(tuner).SubscriptionWeight;
+                if (weight <= CaptureWeight)
+                {
+                    _logger.LogDebug(
+                        "Skipping frame capture: the tuner's subscription weight ({Weight}) is not above the "
+                        + "capture weight ({Capture}), so a viewer could not take the tuner back",
+                        weight, CaptureWeight);
+                    return null;
+                }
+
                 var subscription = await client
-                    .SubscribeAsync(tvhChannelId, cancellationToken, CaptureWeight).ConfigureAwait(false);
+                    .SubscribeAsync(tvhChannelId, ct, CaptureWeight).ConfigureAwait(false);
 
                 // Comfortably more than the sample we are about to take: a ring smaller than the read would
                 // lap the reader mid-capture and hand ffmpeg a TS with a hole in it.
@@ -610,15 +636,17 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
                 {
                     OriginalStreamId = channelId,
                 };
-                await owned.Open(cancellationToken).ConfigureAwait(false);
+                await owned.Open(ct).ConfigureAwait(false);
                 RememberMux(channelId, owned);
                 live = owned;
             }
 
-            return await ExtractFrameAsync(live, cancellationToken).ConfigureAwait(false);
+            return await ExtractFrameAsync(live, ct).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
+            // Running out of budget is the ordinary outcome for a channel that will not tune, so it reads as
+            // "no frame" like any other failure; only the caller cancelling propagates.
             _logger.LogDebug(ex, "Could not capture a frame from channel {Channel}", channelId);
             return null;
         }
@@ -657,10 +685,7 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
         var samplePath = Path.Combine(Path.GetTempPath(), "htsp-frame-" + Guid.NewGuid().ToString("N") + ".ts");
         try
         {
-            using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            budget.CancelAfter(TimeSpan.FromSeconds(20));
-
-            if (await live.CaptureSampleAsync(samplePath, budget.Token).ConfigureAwait(false) == 0)
+            if (await live.CaptureSampleAsync(samplePath, cancellationToken).ConfigureAwait(false) == 0)
             {
                 return null;
             }
@@ -679,7 +704,7 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
                 video,
                 threedFormat: null,
                 offset: null,
-                budget.Token).ConfigureAwait(false);
+                cancellationToken).ConfigureAwait(false);
         }
         finally
         {
