@@ -642,7 +642,8 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
                 // to tune does so in a second or two, so a thumbnail waits a fraction as long and moves on.
                 // The failure is remembered, so the channel is not retried for another half hour anyway.
                 using var tuneBudget = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                tuneBudget.CancelAfter(TimeSpan.FromSeconds(8));
+                tuneBudget.CancelAfter(TimeSpan.FromSeconds(
+                    Math.Clamp(Plugin.Instance!.Configuration.ProgramImageTuneSeconds, 2, 60)));
                 var subscription = await client
                     .SubscribeAsync(tvhChannelId, tuneBudget.Token, CaptureWeight).ConfigureAwait(false);
 

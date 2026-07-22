@@ -134,6 +134,18 @@ public class PluginConfiguration : BasePluginConfiguration
     public int ProgramImageParkMinutes { get; set; }
 
     /// <summary>
+    /// Gets or sets how many seconds a background frame grab waits for a channel to start before giving up.
+    /// </summary>
+    /// <remarks>
+    /// Watching a channel gets Tvheadend's full patience -- 20 seconds, extended further while it reports it
+    /// is still tuning -- because somebody is waiting for it. A thumbnail is not worth that: on a lineup
+    /// where many channels cannot currently be tuned, the failures rather than the successes are what a
+    /// sweep spends its time on. How long a tune legitimately takes is a property of the hardware, though, so
+    /// raise this if channels you know are fine keep timing out. Clamped to 2..60.
+    /// </remarks>
+    public int ProgramImageTuneSeconds { get; set; } = 8;
+
+    /// <summary>
     /// Gets or sets the minimum age, in minutes, before a Tvheadend EPG push may trigger a Jellyfin guide
     /// refresh. Zero disables it entirely, leaving the guide to Jellyfin's own schedule.
     /// </summary>

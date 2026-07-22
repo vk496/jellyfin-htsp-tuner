@@ -6,6 +6,7 @@ using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.LiveTv;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Entities;
+using MediaBrowser.Model.LiveTv;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -105,7 +106,11 @@ internal sealed class ProgramImageService : BackgroundService
         // The library may also hold an M3U or HDHomeRun tuner's channels, which we cannot tune.
         var channels = _library
             .GetItemList(new InternalItemsQuery { ItemIds = missing.Select(p => p.ChannelId).Distinct().ToArray() })
+            .OfType<LiveTvChannel>()
             .Where(c => c.ExternalId?.StartsWith(HtspTunerHost.ChannelIdPrefix, StringComparison.Ordinal) == true)
+            // A radio service has no video, so there is no frame to grab and never will be. Jellyfin already
+            // knows which these are, so drop them here instead of spending a slot per sweep finding out.
+            .Where(c => c.ChannelType != ChannelType.Radio)
             // The logo is whatever Jellyfin already stored for the channel -- the same picture it draws on
             // the channel tile. Taking it from here rather than over HTSP also covers the channels whose
             // Tvheadend icon is an external URL, which HTSP cannot hand us but Jellyfin has downloaded.

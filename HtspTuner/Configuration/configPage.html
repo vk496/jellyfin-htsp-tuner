@@ -118,6 +118,16 @@
                     </div>
                 </div>
                 <div class="inputContainer">
+                    <label class="inputLabel inputLabelUnfocused" for="ProgramImageTuneSeconds">Give a capture this long to tune (seconds)</label>
+                    <input is="emby-input" type="number" id="ProgramImageTuneSeconds" min="2" max="60" />
+                    <div class="fieldDescription">
+                        Watching a channel gets Tvheadend's full patience because somebody is waiting for it; a
+                        thumbnail is not worth that, and on a lineup where many channels cannot be tuned the failures
+                        are what a sweep spends its time on. Default <code>8</code>. Raise it if channels you know are
+                        fine keep timing out &mdash; how long a tune takes is a property of your tuners.
+                    </div>
+                </div>
+                <div class="inputContainer">
                     <label class="inputLabel inputLabelUnfocused" for="ProgramImageScanSeconds">Scan interval (seconds)</label>
                     <input is="emby-input" type="number" id="ProgramImageScanSeconds" min="15" max="3600" />
                     <div class="fieldDescription">
@@ -189,7 +199,7 @@
             var fields = ["Host", "HtspPort", "Username", "Password", "Profile",
                 "SubscriptionWeight", "MaxBufferMb", "StreamBaseUrl", "AutoGuideRefreshMinutes",
                 "AnalyzeDurationMs", "ProgramImageCandidates", "ProgramImageScanSeconds",
-                "ProgramImageLogoPercent", "ProgramImageLogoMarginPercent", "ProgramImageLogoShadowPercent", "ProgramImageParkMinutes"];
+                "ProgramImageLogoPercent", "ProgramImageLogoMarginPercent", "ProgramImageLogoShadowPercent", "ProgramImageParkMinutes", "ProgramImageTuneSeconds"];
             var checks = ["ImportChannelTags", "CaptureProgramImages"];
 
             function load(cfg) {
@@ -214,6 +224,7 @@
                 cfg.ProgramImageLogoMarginPercent = parseInt(document.getElementById("ProgramImageLogoMarginPercent").value, 10) || 0;
                 cfg.ProgramImageLogoShadowPercent = parseInt(document.getElementById("ProgramImageLogoShadowPercent").value, 10) || 0;
                 cfg.ProgramImageParkMinutes = parseInt(document.getElementById("ProgramImageParkMinutes").value, 10) || 0;
+                cfg.ProgramImageTuneSeconds = parseInt(document.getElementById("ProgramImageTuneSeconds").value, 10) || 8;
                 checks.forEach(function (f) { cfg[f] = document.getElementById(f).checked; });
                 return cfg;
             }
