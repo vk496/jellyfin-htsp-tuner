@@ -43,6 +43,14 @@ internal sealed class HtspLiveStream : ILiveStream, IDirectStreamProvider
     private readonly TaskCompletionSource _firstByte = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Lock _gate = new();
 
+    // A couple of GOPs, which is what ffprobe needs to read the SPS/VPS and detect field order. The ring
+    // reader starts at the last sync point (PAT/PMT + key frame), so any slice of it is self-contained.
+    internal const int ProbeSampleBytes = 1_500_000;
+
+    // Enough for ffmpeg to decode a frame, and no more: this is read at broadcast speed, so every byte is
+    // wall-clock time, and a still frame does not need the depth a metadata probe does.
+    internal const int ThumbnailSampleBytes = 800_000;
+
     private Task? _pump;
     private Timer? _idleWatchdog;
     private long _lastReaderTicks;
@@ -143,6 +151,17 @@ internal sealed class HtspLiveStream : ILiveStream, IDirectStreamProvider
     /// <inheritdoc/>
     public string UniqueId { get; }
 
+    /// <summary>
+    /// Gets a value indicating whether <see cref="Open"/> should skip the one-time metadata probe.
+    /// </summary>
+    /// <remarks>
+    /// The probe exists so playback gets interlacing, HDR and profile right, and it costs an ffprobe run
+    /// plus a few seconds. A stream opened only to grab a still frame needs none of that, and paying it once
+    /// per channel is what made a sweep of a few hundred channels take hours. Skipping leaves the cache
+    /// empty, so the first real viewer still probes.
+    /// </remarks>
+    internal bool SkipProbe { get; init; }
+
     /// <summary>Gets the channel id this stream serves.</summary>
     public long ChannelId => _subscription.ChannelId;
 
@@ -206,7 +225,7 @@ internal sealed class HtspLiveStream : ILiveStream, IDirectStreamProvider
 
         // Probe our own muxed output once per channel for the fields HTSP can't report (interlacing, HDR,
         // bit depth, profile/level). Briefly extends the first tune of a channel; every later tune is cached.
-        if (Interlocked.Exchange(ref _probeStarted, 1) == 0)
+        if (!SkipProbe && Interlocked.Exchange(ref _probeStarted, 1) == 0)
         {
             await ProbeAndMergeAsync(openCancellationToken).ConfigureAwait(false);
         }
@@ -337,7 +356,7 @@ internal sealed class HtspLiveStream : ILiveStream, IDirectStreamProvider
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeout.CancelAfter(TimeSpan.FromSeconds(6));
 
-            var captured = await CaptureSampleAsync(probePath, timeout.Token).ConfigureAwait(false);
+            var captured = await CaptureSampleAsync(probePath, ProbeSampleBytes, timeout.Token).ConfigureAwait(false);
 
             var info = await _mediaEncoder.GetMediaInfo(
                 new MediaInfoRequest
@@ -383,14 +402,11 @@ internal sealed class HtspLiveStream : ILiveStream, IDirectStreamProvider
     /// few seconds of this channel (metadata probe, thumbnail grab) never opens a second subscription.
     /// </remarks>
     /// <param name="path">The file to write.</param>
+    /// <param name="maxBytes">How much to write before stopping.</param>
     /// <param name="ct">A cancellation token; also the caller's time budget.</param>
     /// <returns>The number of bytes written.</returns>
-    internal async Task<int> CaptureSampleAsync(string path, CancellationToken ct)
+    internal async Task<int> CaptureSampleAsync(string path, int maxBytes, CancellationToken ct)
     {
-        // A couple of GOPs is enough for ffprobe to read the SPS/VPS and detect field order; the ring reader
-        // starts at the last sync point (PAT/PMT + key frame), so the capture is self-contained.
-        const int MaxBytes = 1_500_000;
-
         var total = 0;
         using var reader = _ring.OpenReader();
         var file = File.Create(path);
@@ -399,7 +415,7 @@ internal sealed class HtspLiveStream : ILiveStream, IDirectStreamProvider
             var buffer = ArrayPool<byte>.Shared.Rent(64 * 1024);
             try
             {
-                while (total < MaxBytes)
+                while (total < maxBytes)
                 {
                     var read = await reader.ReadAsync(buffer, ct).ConfigureAwait(false);
                     if (read <= 0)

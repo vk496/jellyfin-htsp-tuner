@@ -26,10 +26,6 @@ internal sealed class ProgramImageService : BackgroundService
     // retried on every scan, short enough that a temporary failure heals within an hour.
     private static readonly TimeSpan FailureCooldown = TimeSpan.FromMinutes(30);
 
-    // ponytail: fixed budget, no config knob. Each capture is a tune plus a few seconds of TS, so this is
-    // the difference between a background trickle and hammering the tuners. Promote if anyone needs it.
-    private const int MaxCapturesPerScan = 4;
-
     private readonly HtspTunerHost _host;
     private readonly ILibraryManager _library;
     private readonly IProviderManager _providerManager;
@@ -114,32 +110,50 @@ internal sealed class ProgramImageService : BackgroundService
         var channels = _library
             .GetItemList(new InternalItemsQuery { ItemIds = missing.Select(p => p.ChannelId).Distinct().ToArray() })
             .Where(c => c.ExternalId?.StartsWith(HtspTunerHost.ChannelIdPrefix, StringComparison.Ordinal) == true)
-            .ToDictionary(c => c.Id, c => c.ExternalId!);
+            // The logo is whatever Jellyfin already stored for the channel -- the same picture it draws on
+            // the channel tile. Taking it from here rather than over HTSP also covers the channels whose
+            // Tvheadend icon is an external URL, which HTSP cannot hand us but Jellyfin has downloaded.
+            .ToDictionary(c => c.Id, c => (Id: c.ExternalId!, Logo: c.GetImageInfo(ImageType.Primary, 0)?.Path));
 
         var now = DateTime.UtcNow;
         var candidates = missing
             .Where(p => channels.ContainsKey(p.ChannelId))
             .Select(p => (Program: p, Channel: channels[p.ChannelId]))
-            .Where(x => _cooldown.GetValueOrDefault(x.Channel) <= now)
-            .DistinctBy(x => x.Channel, StringComparer.Ordinal);
-
-        // Shuffle before taking the scan's few: the candidate list comes back in a stable order, so always
-        // working from the front means the same handful of channels get every attempt and the tail is only
-        // ever reached once those succeed. Random picks spread the coverage instead. The chosen few are then
-        // ordered by mux, which is about how they are captured rather than which ones are captured.
-        var work = GroupByMux(
-                Shuffle(candidates.ToList()).Take(MaxCapturesPerScan),
-                x => _host.MuxOf(x.Channel))
+            .Where(x => _cooldown.GetValueOrDefault(x.Channel.Id) <= now)
+            .DistinctBy(x => x.Channel.Id, StringComparer.Ordinal)
             .ToList();
 
-        foreach (var (program, channelId) in work)
+        // A scan works the whole backlog, not a fixed slice of it: the point is to fill the page in minutes,
+        // and a per-scan cap meant the page filled at the cap's rate no matter how cheap each capture got.
+        // Ticks that fire while this is still running simply find nothing left to do -- WaitForNextTickAsync
+        // coalesces them, so scans never overlap and never queue up.
+        //
+        // Shuffled first, because the query order is stable and always working from the front would give the
+        // same channels every attempt if a scan is cut short. Then grouped by mux, which decides how they are
+        // captured rather than which: Tvheadend serves a second channel off a mux it is already tuned to
+        // without touching the tuner.
+        var work = GroupByMux(Shuffle(candidates), x => _host.MuxOf(x.Channel.Id)).ToList();
+
+        var started = DateTime.UtcNow;
+        var captured = 0;
+        foreach (var (program, channel) in work)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (!await TryCaptureAsync(program, channelId, cancellationToken).ConfigureAwait(false))
+            if (await TryCaptureAsync(program, channel.Id, channel.Logo, cancellationToken).ConfigureAwait(false))
             {
-                _cooldown[channelId] = now + FailureCooldown;
+                captured++;
+            }
+            else
+            {
+                _cooldown[channel.Id] = DateTime.UtcNow + FailureCooldown;
             }
         }
+
+        // Worth one line at Information: this is background work on the tuners, and without it the only
+        // evidence a sweep happened is thumbnails quietly appearing.
+        _logger.LogInformation(
+            "Captured {Captured} of {Total} missing programme images in {Seconds}s",
+            captured, work.Count, (int)(DateTime.UtcNow - started).TotalSeconds);
     }
 
     // Fisher-Yates over a copy. Random.Shared is fine here: this only decides which thumbnails get taken
@@ -171,9 +185,10 @@ internal sealed class ProgramImageService : BackgroundService
             .OrderBy(x => muxOf(x) is null ? 1 : 0)
             .ThenBy(muxOf, StringComparer.Ordinal);
 
-    private async Task<bool> TryCaptureAsync(BaseItem program, string channelId, CancellationToken cancellationToken)
+    private async Task<bool> TryCaptureAsync(
+        BaseItem program, string channelId, string? logoPath, CancellationToken cancellationToken)
     {
-        var image = await _host.CaptureFrameAsync(channelId, cancellationToken).ConfigureAwait(false);
+        var image = await _host.CaptureFrameAsync(channelId, logoPath, cancellationToken).ConfigureAwait(false);
         if (image is null)
         {
             return false;

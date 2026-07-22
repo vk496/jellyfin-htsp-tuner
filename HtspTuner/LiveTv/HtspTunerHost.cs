@@ -579,9 +579,13 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
     /// subscription weight so a real viewer always wins the tuner.
     /// </remarks>
     /// <param name="channelId">The prefixed channel id.</param>
+    /// <param name="logoPath">
+    /// The channel logo to stamp into the corner, as a local file Jellyfin already holds, or null for none.
+    /// </param>
     /// <param name="cancellationToken">A cancellation token.</param>
     /// <returns>The path to a temporary image file, which the caller owns and must delete, or null.</returns>
-    internal async Task<string?> CaptureFrameAsync(string channelId, CancellationToken cancellationToken)
+    internal async Task<string?> CaptureFrameAsync(
+        string channelId, string? logoPath, CancellationToken cancellationToken)
     {
         var live = _live.GetValueOrDefault(channelId);
         if (live is { IsAlive: false })
@@ -635,13 +639,14 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
                 owned = new HtspLiveStream(client, subscription, _appHost, _mediaEncoder, 4 << 20, _logger)
                 {
                     OriginalStreamId = channelId,
+                    SkipProbe = true,
                 };
                 await owned.Open(ct).ConfigureAwait(false);
                 RememberMux(channelId, owned);
                 live = owned;
             }
 
-            return await ExtractFrameAsync(live, channelId, ct).ConfigureAwait(false);
+            return await ExtractFrameAsync(live, logoPath, ct).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
@@ -667,14 +672,15 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
 
     private void RememberMux(string channelId, HtspLiveStream stream)
     {
-        if (stream.Subscription.Start?.SourceInfo?.Mux is { Length: > 0 } mux)
+        var info = stream.Subscription.Start?.SourceInfo;
+        if ((info?.MuxUuid ?? info?.Mux) is { Length: > 0 } mux)
         {
             _muxByChannel[channelId] = mux;
         }
     }
 
     private async Task<string?> ExtractFrameAsync(
-        HtspLiveStream live, string channelId, CancellationToken cancellationToken)
+        HtspLiveStream live, string? logoPath, CancellationToken cancellationToken)
     {
         var video = live.MediaSource.MediaStreams
             ?.FirstOrDefault(s => s.Type == MediaBrowser.Model.Entities.MediaStreamType.Video);
@@ -686,7 +692,8 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
         var samplePath = Path.Combine(Path.GetTempPath(), "htsp-frame-" + Guid.NewGuid().ToString("N") + ".ts");
         try
         {
-            if (await live.CaptureSampleAsync(samplePath, cancellationToken).ConfigureAwait(false) == 0)
+            if (await live.CaptureSampleAsync(samplePath, HtspLiveStream.ThumbnailSampleBytes, cancellationToken)
+                    .ConfigureAwait(false) == 0)
             {
                 return null;
             }
@@ -713,7 +720,7 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
                 return frame;
             }
 
-            var branded = await OverlayLogoAsync(frame, channelId, width, cancellationToken).ConfigureAwait(false);
+            var branded = await OverlayLogoAsync(frame, logoPath, width, cancellationToken).ConfigureAwait(false);
             if (branded is null)
             {
                 return frame; // no logo, or the overlay failed -- the bare frame is still worth having
@@ -732,27 +739,22 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
     // which channel each one is from. Sizes are a share of the frame width, which is the only way a single
     // setting can hold for an SD, an HD and a UHD channel side by side.
     private async Task<string?> OverlayLogoAsync(
-        string framePath, string channelId, int frameWidth, CancellationToken cancellationToken)
+        string framePath, string? logoPath, int frameWidth, CancellationToken cancellationToken)
     {
         var cfg = Plugin.Instance!.Configuration;
         var size = cfg.ProgramImageLogoPercent / 100d;
-        if (size <= 0)
+
+        // Whatever Jellyfin already stored for the channel, which is the same picture it draws on the channel
+        // tile. Deliberately not fetched over HTSP: the artwork is already on disk, and channels whose logo
+        // is an external URL have one here too even though HTSP cannot hand it to us.
+        if (size <= 0 || logoPath is null || !File.Exists(logoPath))
         {
-            return null; // logo overlay switched off
+            return null;
         }
 
-        var icon = await GetChannelIconAsync(channelId, cancellationToken).ConfigureAwait(false);
-        if (icon is not { } logo || logo.ContentType == "image/svg+xml")
-        {
-            return null; // no icon, or a vector one ffmpeg cannot read
-        }
-
-        var logoPath = Path.Combine(Path.GetTempPath(), "htsp-logo-" + Guid.NewGuid().ToString("N") + ".img");
         var outPath = Path.Combine(Path.GetTempPath(), "htsp-branded-" + Guid.NewGuid().ToString("N") + ".jpg");
         try
         {
-            await File.WriteAllBytesAsync(logoPath, logo.Data, cancellationToken).ConfigureAwait(false);
-
             var margin = cfg.ProgramImageLogoMarginPercent / 100d;
             var alpha = Math.Clamp(cfg.ProgramImageLogoShadowPercent / 100d, 0, 1);
 
@@ -803,8 +805,8 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
             if (ffmpeg.ExitCode != 0 || !File.Exists(outPath))
             {
                 _logger.LogDebug(
-                    "Logo overlay failed for channel {Channel} (exit {Code}): {Error}",
-                    channelId, ffmpeg.ExitCode, stderr.Trim());
+                    "Logo overlay failed for {Logo} (exit {Code}): {Error}",
+                    logoPath, ffmpeg.ExitCode, stderr.Trim());
                 return null;
             }
 
@@ -812,13 +814,9 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogDebug(ex, "Could not overlay the channel logo for {Channel}", channelId);
+            _logger.LogDebug(ex, "Could not overlay the channel logo {Logo}", logoPath);
             TryDelete(outPath);
             return null;
-        }
-        finally
-        {
-            TryDelete(logoPath);
         }
     }
 
