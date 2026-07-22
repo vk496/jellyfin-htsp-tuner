@@ -631,8 +631,17 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
                     return null;
                 }
 
+                // A separate, much shorter budget for the tune itself. HtspSubscription gives a channel 20s
+                // to start and lets Tvheadend extend that with subscriptionGrace, which is right for someone
+                // pressing play on a satellite channel whose LNB needs a moment -- but it means every channel
+                // Tvheadend cannot currently tune costs the sweep half a minute, and on a large lineup those
+                // failures, not the successes, are what the sweep spends its time on. A channel that is going
+                // to tune does so in a second or two, so a thumbnail waits a fraction as long and moves on.
+                // The failure is remembered, so the channel is not retried for another half hour anyway.
+                using var tuneBudget = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                tuneBudget.CancelAfter(TimeSpan.FromSeconds(8));
                 var subscription = await client
-                    .SubscribeAsync(tvhChannelId, ct, CaptureWeight).ConfigureAwait(false);
+                    .SubscribeAsync(tvhChannelId, tuneBudget.Token, CaptureWeight).ConfigureAwait(false);
 
                 // Comfortably more than the sample we are about to take: a ring smaller than the read would
                 // lap the reader mid-capture and hand ffmpeg a TS with a hole in it.
