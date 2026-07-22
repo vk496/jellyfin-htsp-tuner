@@ -110,6 +110,74 @@ public sealed class ProgramImageService : BackgroundService
     /// <inheritdoc/>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        _host.ChannelOpened += OnChannelOpened;
+        try
+        {
+            await SweepLoopAsync(stoppingToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _host.ChannelOpened -= OnChannelOpened;
+        }
+    }
+
+    // A recording takes its artwork from the programme's own picture, once, as it starts. Waiting for the
+    // next sweep means the recording keeps the blank it started with for good, so grab the frame now --
+    // the channel is open, so there is no tuner to wait for and nothing to take from anybody.
+    private void OnChannelOpened(string channelId)
+    {
+        if (Plugin.Instance?.Configuration.CaptureProgramImages != true)
+        {
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await CaptureOpenChannelAsync(channelId, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Could not capture on opening channel {Channel}", channelId);
+            }
+        });
+    }
+
+    private async Task CaptureOpenChannelAsync(string channelId, CancellationToken cancellationToken)
+    {
+        var channel = _library
+            .GetItemList(new InternalItemsQuery { IncludeItemTypes = [BaseItemKind.LiveTvChannel] })
+            .OfType<LiveTvChannel>()
+            .FirstOrDefault(c => string.Equals(c.ExternalId, channelId, StringComparison.Ordinal));
+        if (channel is null || channel.ChannelType == ChannelType.Radio)
+        {
+            return;
+        }
+
+        var airing = _library
+            .GetItemList(new InternalItemsQuery
+            {
+                IncludeItemTypes = [BaseItemKind.LiveTvProgram],
+                IsAiring = true,
+                ChannelIds = [channel.Id],
+            })
+            .FirstOrDefault(p => !p.HasImage(ImageType.Primary, 0));
+        if (airing is null)
+        {
+            return; // nothing on, or it already has a picture -- a recording will use that one
+        }
+
+        _logger.LogInformation(
+            "Channel {Channel} opened and \"{Program}\" has no picture; capturing one now",
+            channelId, airing.Name);
+
+        var logo = channel.GetImageInfo(ImageType.Primary, 0)?.Path;
+        await TryCaptureAsync(airing, channelId, logo, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task SweepLoopAsync(CancellationToken stoppingToken)
+    {
         using var timer = new PeriodicTimer(ScanInterval());
         while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false))
         {

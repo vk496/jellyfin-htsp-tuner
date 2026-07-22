@@ -743,10 +743,20 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
         }
     }
 
+    /// <summary>Raised when a channel is opened for somebody -- a viewer, or a recording starting.</summary>
+    /// <remarks>
+    /// Jellyfin writes a recording's artwork once, from the programme's own picture, at the moment the
+    /// recording starts. A programme captured a minute later is a minute too late, so the picture has to be
+    /// taken as the stream opens rather than whenever the next sweep comes round. It costs nothing at that
+    /// point: the channel is tuned and the bytes are already arriving.
+    /// </remarks>
+    internal event Action<string>? ChannelOpened;
+
     private void Remember(string channelId, HtspLiveStream stream)
     {
         _live[channelId] = stream;
         RememberMux(channelId, stream);
+        ChannelOpened?.Invoke(channelId);
     }
 
     private void RememberMux(string channelId, HtspLiveStream stream)
