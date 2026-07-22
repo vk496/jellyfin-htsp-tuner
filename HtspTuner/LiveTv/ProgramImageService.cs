@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using Jellyfin.Data.Enums;
 using Jellyfin.Database.Implementations.Enums;
 using MediaBrowser.Controller.Entities;
@@ -36,6 +37,12 @@ public sealed class ProgramImageService : BackgroundService
     private static readonly TimeSpan OrphanGrace = TimeSpan.FromHours(6);
 
     private static readonly TimeSpan ChannelIdCacheTtl = TimeSpan.FromMinutes(10);
+
+    // Ahead of everything on the page: a channel already being watched is the cheapest capture there is.
+    private const int WatchedRank = -1;
+
+    // Not on the page at all, so it has no claim on being done before anything that is.
+    private const int Unranked = int.MaxValue;
 
     // Bounds one pass: the first run on a server that has been collecting these for months has thousands to
     // get through, and there is no hurry.
@@ -198,6 +205,11 @@ public sealed class ProgramImageService : BackgroundService
         var limit = Plugin.Instance.Configuration.ProgramImageCandidates;
         var missing = new List<BaseItem>();
         var seen = new HashSet<Guid>();
+
+        // Where each programme sits on the page. Jellyfin returns the row already ordered, best first, so
+        // position in that list is exactly how prominent a tile is -- and the whole point of capturing is
+        // the tiles somebody is looking at.
+        var rank = new Dictionary<Guid, int>();
         foreach (var user in _userManager.GetUsers())
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -215,6 +227,9 @@ public sealed class ProgramImageService : BackgroundService
             {
                 if (!item.HasImage(ImageType.Primary, 0) && seen.Add(item.Id))
                 {
+                    // Best position across users: a tile at the top of one person's row deserves that
+                    // treatment even if it is halfway down somebody else's.
+                    rank[item.Id] = missing.Count;
                     missing.Add(item);
                 }
             }
@@ -223,7 +238,7 @@ public sealed class ProgramImageService : BackgroundService
         // Whatever is on a channel somebody is watching, page or no page. Reading that costs Tvheadend
         // nothing -- the bytes are already buffered, no tuner is touched -- so there is no reason to let it
         // stay blank just because the home page happened not to rank it.
-        AddWatchedChannelPrograms(missing, seen, cancellationToken);
+        AddWatchedChannelPrograms(missing, seen, rank, cancellationToken);
 
         if (missing.Count == 0)
         {
@@ -277,12 +292,11 @@ public sealed class ProgramImageService : BackgroundService
         // A scan works the whole backlog, not a fixed slice of it: the point is to fill the page in minutes,
         // and a per-scan cap meant the page filled at the cap's rate no matter how cheap each capture got.
         // Sweeps cannot overlap -- the interval is counted from the end of one to the start of the next.
-        //
-        // Shuffled first, because the query order is stable and always working from the front would give the
-        // same channels every attempt if a scan is cut short. Then grouped by mux, which decides how they are
-        // captured rather than which: Tvheadend serves a second channel off a mux it is already tuned to
-        // without touching the tuner.
-        var work = GroupByMux(Shuffle(candidates), x => _host.MuxOf(x.Channel.Id)).ToList();
+        var work = CaptureOrder(
+                candidates,
+                x => _host.MuxOf(x.Channel.Id),
+                x => rank.GetValueOrDefault(x.Program.Id, Unranked))
+            .ToList();
 
         var started = DateTime.UtcNow;
         var captured = 0;
@@ -330,7 +344,8 @@ public sealed class ProgramImageService : BackgroundService
             captured, work.Count, (int)(DateTime.UtcNow - started).TotalSeconds, why);
     }
 
-    private void AddWatchedChannelPrograms(List<BaseItem> missing, HashSet<Guid> seen, CancellationToken cancellationToken)
+    private void AddWatchedChannelPrograms(
+        List<BaseItem> missing, HashSet<Guid> seen, Dictionary<Guid, int> rank, CancellationToken cancellationToken)
     {
         var watched = _host.WatchedChannelIds();
         if (watched.Count == 0)
@@ -381,6 +396,9 @@ public sealed class ProgramImageService : BackgroundService
                           && now - taken >= TimeSpan.FromMinutes(refresh));
             if (due && seen.Add(item.Id))
             {
+                // Ahead of the page: this channel is already tuned, so it is both the cheapest capture
+                // available and the one somebody is demonstrably looking at.
+                rank[item.Id] = WatchedRank;
                 missing.Add(item);
             }
         }
@@ -481,21 +499,48 @@ public sealed class ProgramImageService : BackgroundService
         return items;
     }
 
-    /// <summary>Orders items so that ones sharing a mux end up next to each other.</summary>
+    /// <summary>Orders a sweep's work: what is on screen first, then whatever is left, at random.</summary>
     /// <remarks>
-    /// A scan captures a handful of channels back to back. Tvheadend can serve a second channel off a mux it
-    /// is already tuned to without touching the tuner, so keeping same-mux channels adjacent turns most of a
-    /// scan into near-free work. Channels we have never tuned have no known mux and go last, since they are
-    /// the ones that will definitely cost a tune.
+    /// Two things decide this. Prominence, because a tile nobody can see is not worth a tuner ahead of one
+    /// they are looking at — and the previous order shuffled that away entirely. And the multiplex, because
+    /// Tvheadend serves a second channel off one it is already tuned to without touching the tuner, so once
+    /// a mux has been picked the rest of its channels are nearly free and should follow immediately.
+    /// Whatever is left over goes last in random order, so a sweep cut short does not keep retrying the same
+    /// few channels while the tail is never reached.
     /// </remarks>
     /// <typeparam name="T">The item type.</typeparam>
     /// <param name="items">The items to order.</param>
-    /// <param name="muxOf">Returns an item's mux, or null if it is not known.</param>
+    /// <param name="muxOf">Returns an item's mux, or null if it has never been tuned.</param>
+    /// <param name="rankOf">Returns how prominent an item is; lower is more visible, <see cref="Unranked"/> is not on the page.</param>
     /// <returns>The ordered items.</returns>
-    internal static IEnumerable<T> GroupByMux<T>(IEnumerable<T> items, Func<T, string?> muxOf)
-        => items
-            .OrderBy(x => muxOf(x) is null ? 1 : 0)
-            .ThenBy(muxOf, StringComparer.Ordinal);
+    internal static IEnumerable<T> CaptureOrder<T>(
+        IReadOnlyList<T> items, Func<T, string?> muxOf, Func<T, int> rankOf)
+    {
+        var ranked = new List<(T Item, int Rank, string Key)>();
+        var rest = new List<T>();
+
+        for (var i = 0; i < items.Count; i++)
+        {
+            var r = rankOf(items[i]);
+            if (r >= Unranked)
+            {
+                rest.Add(items[i]);
+                continue;
+            }
+
+            // A mux we have never seen cannot be grouped with anything, so it stands alone rather than
+            // pooling with every other unknown -- those are not one multiplex, they are simply unknown.
+            ranked.Add((items[i], r, muxOf(items[i]) ?? "\u0000" + i.ToString(CultureInfo.InvariantCulture)));
+        }
+
+        var byMux = ranked
+            .GroupBy(t => t.Key, StringComparer.Ordinal)
+            .OrderBy(g => g.Min(t => t.Rank))
+            .SelectMany(g => g.OrderBy(t => t.Rank))
+            .Select(t => t.Item);
+
+        return byMux.Concat(Shuffle(rest));
+    }
 
     // Returns (null, false) on success, otherwise why no image was stored and whether every other channel
     // would hit the same thing.
