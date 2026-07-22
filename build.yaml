@@ -62,3 +62,8 @@ changelog: |-
     the database when it ages out of the guide but leaves the picture on disk, because it only
     clears metadata folders for items that came from a file -- so they accumulate for as long as
     the server has had Live TV.
+  - Keep all of that out of a viewer's way: while anybody is watching, only channels already being
+    streamed are sampled, and the artwork cleanup waits for a quiet moment. Subscription weight
+    stops a capture taking a tuner from a viewer, but it does not cover the DiSEqC and polarisation
+    switching that tuning another transponder needs on a shared dish, nor the ffmpeg runs competing
+    with a transcode.

@@ -66,9 +66,12 @@ automatically.
   minute the plugin takes a still frame off the channel for a few of the programmes on air that
   have no picture. A channel someone is already watching is sampled from the buffer already in
   memory, so Tvheadend never sees it; anything else is tuned at the **lowest subscription weight**,
-  so a real viewer always wins a contended tuner. The channel's own logo is stamped into the
-  corner of the frame, sized as a share of the frame width so it looks the same on SD, HD and UHD
-  channels side by side. Scoped by default to exactly the set of programmes Jellyfin's home page
+  so a real viewer always wins a contended tuner &mdash; and while anybody *is* watching, only the
+  streams already open are sampled at all, because weight stops a capture stealing a tuner but not
+  the DiSEqC and CPU cost of tuning one. A watched channel is also re-shot every few minutes, since
+  that costs nothing and the opening seconds of a programme are a poor summary of it. The channel's
+  own logo is stamped into the corner of the frame, sized as a share of the frame width so it looks
+  the same on SD, HD and UHD channels side by side. Scoped by default to exactly the set of programmes Jellyfin's home page
   picks from; size, margin, shadow, scan interval, scope and how long a failed channel is skipped
   for are all settings. Work is ordered by **multiplex**, so consecutive captures reuse a mux
   Tvheadend has already tuned rather than making it retune, with special handling for networks whose
