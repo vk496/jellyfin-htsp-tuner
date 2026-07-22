@@ -836,12 +836,15 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
             var place = FormattableString.Invariant(
                 $"overlay=x=main_w-overlay_w-main_w*{margin}:y=main_h-overlay_h-main_w*{margin}");
 
-            var backdrop = BackdropFilter(logoPath, logoWidth, opacity, spread);
+            var backdrop = Backdrop(logoPath, logoWidth, margin, opacity, spread);
             var filter = backdrop is null
-                ? string.Create(CultureInfo.InvariantCulture, $"[1:v]format=rgba,scale={logoWidth}:-1[lg];[0:v][lg]{place}[o]")
+                ? string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"[1:v]format=rgba,scale={logoWidth}:-1[lg];[0:v][lg]{place}[o]")
                 : string.Create(
                     CultureInfo.InvariantCulture,
-                    $"[1:v]format=rgba,scale={logoWidth}:-1[lg];{backdrop}[0:v][disc]{place.Replace("[o]", string.Empty, StringComparison.Ordinal)}[bg];[bg][lg]{place}[o]");
+                    $"[1:v]format=rgba,scale={logoWidth}:-1[lg];{backdrop.Value.Chain}"
+                    + $"[0:v][disc]{backdrop.Value.Place}[bg];[bg][lg]{place}[o]");
 
             var psi = new System.Diagnostics.ProcessStartInfo(_mediaEncoder.EncoderPath)
             {
@@ -885,7 +888,8 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
     // shadow only outlines a logo, which is not enough on a frame that happens to be dark or busy behind it
     // -- and a still from a live broadcast can be anything at all. Returns null if the logo's dimensions
     // cannot be read, in which case the logo is drawn bare rather than on a mis-sized disc.
-    private static string? BackdropFilter(string logoPath, int logoWidth, double opacity, double spread)
+    private static (string Chain, string Place)? Backdrop(
+        string logoPath, int logoWidth, double margin, double opacity, double spread)
     {
         if (opacity <= 0 || ImageSize.Read(logoPath) is not { } intrinsic || intrinsic.Width <= 0)
         {
@@ -904,10 +908,20 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
         // rather than something that needs to suit a particular setup; the two knobs that do are settings.
         const double Falloff = 1.6;
 
-        return string.Create(
+        var chain = string.Create(
             CultureInfo.InvariantCulture,
             $"color=black:s={canvas}x{canvas},format=rgba,"
             + $"geq=r=0:g=0:b=0:a='255*{opacity}*pow(clip(({edge}-hypot(X-{canvas}/2,Y-{canvas}/2))/({edge}-{solid}),0,1),{Falloff})'[disc];");
+
+        // Centred on the logo, which means its own size cannot anchor it: the disc is bigger than the logo,
+        // so placing both by their bottom-right corner puts the disc up and to the left of what it is meant
+        // to sit behind. Offset from the logo's centre instead.
+        var place = string.Create(
+            CultureInfo.InvariantCulture,
+            $"overlay=x=main_w-main_w*{margin}-{logoWidth / 2.0}-{canvas / 2.0}"
+            + $":y=main_h-main_w*{margin}-{logoHeight / 2.0}-{canvas / 2.0}");
+
+        return (chain, place);
     }
 
     /// <summary>Deletes a temporary file, ignoring the usual reasons it might not be there.</summary>
