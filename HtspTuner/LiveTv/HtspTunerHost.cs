@@ -697,6 +697,13 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
             // Running out of budget is the ordinary outcome for a channel that will not tune.
             return FrameCapture.Failed("timed out tuning the channel");
         }
+        catch (ObjectDisposedException)
+        {
+            // The stream we were reading from was closed underneath us -- the viewer stopped between our
+            // liveness check and the read. Nothing is wrong; the channel simply is not open any more.
+            _live.TryRemove(channelId, out _);
+            return FrameCapture.Failed("the stream closed while it was being read");
+        }
         catch (HtspServerException ex)
         {
             // The server is unreachable, so every remaining channel would fail the same way.
