@@ -145,13 +145,12 @@
                     </div>
                 </div>
                 <div class="inputContainer">
-                    <label class="inputLabel inputLabelUnfocused" for="ProgramImageCandidates">Programmes considered per scan</label>
+                    <label class="inputLabel inputLabelUnfocused" for="ProgramImageCandidates">Home page programmes to cover</label>
                     <input is="emby-input" type="number" id="ProgramImageCandidates" min="0" max="10000" />
                     <div class="fieldDescription">
-                        Default <code>200</code>, which is exactly the pool the Live TV home page picks its "On Now"
-                        row from &mdash; so captures go to what you can actually see. Raise it to reach further down
-                        the guide. <code>0</code> means every programme on air, which on a Tvheadend carrying thousands
-                        of channels means it will spend all day tuning them.
+                        The list comes from Jellyfin itself &mdash; the same call the home page makes, for each user
+                        &mdash; so captures go to exactly what is on screen. Default <code>60</code>. <code>0</code>
+                        covers the whole page for every user.
                     </div>
                 </div>
                 <details style="margin:0.5em 0 1em 0;">

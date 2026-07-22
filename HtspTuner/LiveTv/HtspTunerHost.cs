@@ -582,10 +582,6 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
     /// <param name="logoPath">
     /// The channel logo to stamp into the corner, as a local file Jellyfin already holds, or null for none.
     /// </param>
-    /// <param name="centreLogo">
-    /// Whether to centre the logo rather than put it in the corner, for an image Jellyfin will show on a
-    /// portrait card and therefore crop the sides off.
-    /// </param>
     /// <param name="cancellationToken">A cancellation token.</param>
     /// <returns>
     /// The path to a temporary image file, which the caller owns and must delete, or the reason there is
@@ -593,7 +589,7 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
     /// login without access, a dish pointed elsewhere) and "no thumbnails appeared" does not say which.
     /// </returns>
     internal async Task<FrameCapture> CaptureFrameAsync(
-        string channelId, string? logoPath, bool centreLogo, CancellationToken cancellationToken)
+        string channelId, string? logoPath, CancellationToken cancellationToken)
     {
         var live = _live.GetValueOrDefault(channelId);
         if (live is { IsAlive: false })
@@ -617,10 +613,18 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
             {
                 var (tuner, tvhChannelId) = Resolve(channelId);
                 var client = await ClientForAsync(tuner, ct).ConfigureAwait(false);
-                if (client.GetChannel(tvhChannelId)?.IsRadio != false)
+                // Two different things, worth reporting separately: a radio service has no video and never
+                // will, whereas a channel Tvheadend has never heard of means Jellyfin is holding a channel
+                // that no longer exists on the server.
+                var channel = client.GetChannel(tvhChannelId);
+                if (channel is null)
                 {
-                    // no video to grab, and an unknown channel is not worth tuning
-                    return FrameCapture.Failed("radio or unknown channel");
+                    return FrameCapture.Failed("channel no longer exists on Tvheadend");
+                }
+
+                if (channel.IsRadio)
+                {
+                    return FrameCapture.Failed("radio channel, no video to capture");
                 }
 
                 // Tuner priority is entirely Tvheadend's to decide, and weight is the only lever HTSP gives
@@ -663,7 +667,7 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
                 live = owned;
             }
 
-            var path = await ExtractFrameAsync(live, logoPath, centreLogo, ct).ConfigureAwait(false);
+            var path = await ExtractFrameAsync(live, logoPath, ct).ConfigureAwait(false);
             return path is null ? FrameCapture.Failed("no frame could be decoded") : new FrameCapture(path, null);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -700,7 +704,7 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
     }
 
     private async Task<string?> ExtractFrameAsync(
-        HtspLiveStream live, string? logoPath, bool centreLogo, CancellationToken cancellationToken)
+        HtspLiveStream live, string? logoPath, CancellationToken cancellationToken)
     {
         var video = live.MediaSource.MediaStreams
             ?.FirstOrDefault(s => s.Type == MediaBrowser.Model.Entities.MediaStreamType.Video);
@@ -740,8 +744,7 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
                 return frame;
             }
 
-            var branded = await OverlayLogoAsync(frame, logoPath, width, centreLogo, cancellationToken)
-                .ConfigureAwait(false);
+            var branded = await OverlayLogoAsync(frame, logoPath, width, cancellationToken).ConfigureAwait(false);
             if (branded is null)
             {
                 return frame; // no logo, or the overlay failed -- the bare frame is still worth having
@@ -760,7 +763,7 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
     // which channel each one is from. Sizes are a share of the frame width, which is the only way a single
     // setting can hold for an SD, an HD and a UHD channel side by side.
     private async Task<string?> OverlayLogoAsync(
-        string framePath, string? logoPath, int frameWidth, bool centreLogo, CancellationToken cancellationToken)
+        string framePath, string? logoPath, int frameWidth, CancellationToken cancellationToken)
     {
         var cfg = Plugin.Instance!.Configuration;
         var size = cfg.ProgramImageLogoPercent / 100d;
@@ -793,26 +796,20 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
             var back = Pad / (1 + 2 * Pad);
             var shadowInset = margin - Nudge;
 
-            // Jellyfin shows a movie on a portrait card and fills it from the same image, so a 16:9 frame
-            // keeps only its middle: a 2:3 crop of 16:9 is the central 37.5% of the width, and a logo in the
-            // corner is well outside that. Centred, a logo this size lands inside the surviving strip and
-            // reads the same on the wide cards everywhere else.
-            var logoX = centreLogo
-                ? FormattableString.Invariant($"(main_w-overlay_w)/2")
-                : FormattableString.Invariant($"main_w-overlay_w-main_w*{margin}");
-            var shadowX = centreLogo
-                ? FormattableString.Invariant($"(main_w-overlay_w*{1 - back})/2+main_w*{Nudge}")
-                : FormattableString.Invariant($"main_w-overlay_w*{1 - back}-main_w*{shadowInset}");
-
+            // Every capture is placed the same way. Which card shape Jellyfin will use is decided by the web
+            // client per section when it renders -- a portrait card crops a 16:9 frame to its middle third and
+            // takes a corner logo with it -- and nothing on the item says which section it will appear in, or
+            // stops it appearing in several. So there is nothing to detect, and one consistent placement beats
+            // a special case that would only be right some of the time.
             var filter = string.Create(
                 CultureInfo.InvariantCulture,
                 $"[1:v]format=rgba,scale={logoWidth}:-1,split[l1][l2];"
                 + $"[l1]pad=iw*{1 + 2 * Pad}:ih*{1 + 2 * Pad}:iw*{Pad}:ih*{Pad}:color=#00000000,"
                 + $"colorchannelmixer=rr=0:gg=0:bb=0:aa={alpha},"
                 + $"boxblur=luma_radius=w*0.03:luma_power=2:alpha_radius=w*0.03:alpha_power=2[sh];"
-                + $"[0:v][sh]overlay=x={shadowX}"
+                + $"[0:v][sh]overlay=x=main_w-overlay_w*{1 - back}-main_w*{shadowInset}"
                 + $":y=main_h-overlay_h*{1 - back}-main_w*{shadowInset}[t];"
-                + $"[t][l2]overlay=x={logoX}:y=main_h-overlay_h-main_w*{margin}[o]");
+                + $"[t][l2]overlay=x=main_w-overlay_w-main_w*{margin}:y=main_h-overlay_h-main_w*{margin}[o]");
 
             var psi = new System.Diagnostics.ProcessStartInfo(_mediaEncoder.EncoderPath)
             {

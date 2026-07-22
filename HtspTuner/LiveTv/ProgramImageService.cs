@@ -4,6 +4,7 @@ using Jellyfin.Database.Implementations.Enums;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller.Dto;
 using MediaBrowser.Controller.LiveTv;
 using MediaBrowser.Controller.Providers;
 using MediaBrowser.Model.Entities;
@@ -41,6 +42,8 @@ internal sealed class ProgramImageService : BackgroundService
     private readonly HtspTunerHost _host;
     private readonly IServerApplicationPaths _appPaths;
     private readonly ILibraryManager _library;
+    private readonly ILiveTvManager _liveTv;
+    private readonly IUserManager _userManager;
     private readonly IProviderManager _providerManager;
     private readonly ILogger<ProgramImageService> _logger;
     private readonly ConcurrentDictionary<string, DateTime> _cooldown = new();
@@ -53,19 +56,25 @@ internal sealed class ProgramImageService : BackgroundService
     /// <summary>Initializes a new instance of the <see cref="ProgramImageService"/> class.</summary>
     /// <param name="host">The tuner host, which owns the channels and does the capturing.</param>
     /// <param name="appPaths">Application paths, for finding the artwork Jellyfin leaves behind.</param>
-    /// <param name="library">The library, used to find what the home page is showing.</param>
+    /// <param name="library">The library, used to resolve the channels those programmes are on.</param>
+    /// <param name="liveTv">Live TV, asked directly what the home page is showing.</param>
+    /// <param name="userManager">The users, because the home page is built per user.</param>
     /// <param name="providerManager">Used to store the captured image against the programme.</param>
     /// <param name="logger">The logger.</param>
     public ProgramImageService(
         HtspTunerHost host,
         IServerApplicationPaths appPaths,
         ILibraryManager library,
+        ILiveTvManager liveTv,
+        IUserManager userManager,
         IProviderManager providerManager,
         ILogger<ProgramImageService> logger)
     {
         _host = host;
         _appPaths = appPaths;
         _library = library;
+        _liveTv = liveTv;
+        _userManager = userManager;
         _providerManager = providerManager;
         _logger = logger;
     }
@@ -106,22 +115,40 @@ internal sealed class ProgramImageService : BackgroundService
             return;
         }
 
-        // Exactly the pool the Live TV home page draws its "On Now" row from: LiveTvManager asks for the
-        // airing programmes with the earliest start date, capped, and only then reorders that shortlist by
-        // its recommendation score and shows the top of it. Matching the query means we cover what is on
-        // screen without guessing at the score — and the cap is what keeps this sane on a Tvheadend
-        // carrying thousands of channels, where "every airing programme" would be thousands of rows a minute.
+        // Ask Jellyfin what the Live TV home page is actually showing, rather than reproducing the query
+        // behind it. The row is not simply "the airing programmes": LiveTvManager fetches a shortlist and
+        // reorders it by a recommendation score built from each user's favourites, likes and play counts,
+        // so the same server shows different programmes to different people. Guessing at that put channels
+        // in the candidate set that were nowhere near the page -- radio services among them.
+        //
+        // The union across users is the honest reading of "what is on the main page", since each user has
+        // their own. It is also what keeps this proportional: the page shows tens of programmes, not the
+        // thousands a large Tvheadend carries.
         var limit = Plugin.Instance.Configuration.ProgramImageCandidates;
-        var missing = _library
-            .GetItemList(new InternalItemsQuery
+        var missing = new List<BaseItem>();
+        var seen = new HashSet<Guid>();
+        foreach (var user in _userManager.GetUsers())
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var page = _liveTv.GetRecommendedProgramsInternal(
+                new InternalItemsQuery(user)
+                {
+                    IsAiring = true,
+                    Limit = limit > 0 ? limit : null,
+                    EnableTotalRecordCount = false,
+                },
+                new DtoOptions(false),
+                cancellationToken);
+
+            foreach (var item in page.Items)
             {
-                IncludeItemTypes = [BaseItemKind.LiveTvProgram],
-                IsAiring = true,
-                OrderBy = [(ItemSortBy.StartDate, SortOrder.Ascending)],
-                Limit = limit > 0 ? limit : null,
-            })
-            .Where(p => !p.HasImage(ImageType.Primary, 0))
-            .ToList();
+                if (!item.HasImage(ImageType.Primary, 0) && seen.Add(item.Id))
+                {
+                    missing.Add(item);
+                }
+            }
+        }
+
         if (missing.Count == 0)
         {
             return;
@@ -296,11 +323,7 @@ internal sealed class ProgramImageService : BackgroundService
     private async Task<string?> TryCaptureAsync(
         BaseItem program, string channelId, string? logoPath, CancellationToken cancellationToken)
     {
-        // A movie is shown on a portrait card, which crops the sides away; the logo has to sit in the middle
-        // to survive that.
-        var isMovie = program is LiveTvProgram { IsMovie: true };
-        var result = await _host.CaptureFrameAsync(channelId, logoPath, isMovie, cancellationToken)
-            .ConfigureAwait(false);
+        var result = await _host.CaptureFrameAsync(channelId, logoPath, cancellationToken).ConfigureAwait(false);
         if (result.Path is not { } image)
         {
             return result.Error ?? "unknown";

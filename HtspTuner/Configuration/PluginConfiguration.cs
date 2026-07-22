@@ -77,16 +77,15 @@ public class PluginConfiguration : BasePluginConfiguration
     public bool CaptureProgramImages { get; set; } = true;
 
     /// <summary>
-    /// Gets or sets how many airing programmes each scan considers, newest start date first. Zero means
-    /// every programme currently on air.
+    /// Gets or sets how many of the Live TV home page's programmes each scan covers. Zero means all of them.
     /// </summary>
     /// <remarks>
-    /// The default matches the pool Jellyfin's Live TV home page draws its "On Now" row from, so this covers
-    /// what is on screen and nothing else. It is also what keeps the feature proportional to a large
-    /// Tvheadend: a server can carry thousands of channels, and a still frame is only worth taking for
-    /// programmes somebody is going to look at. Raise it to reach further down the guide.
+    /// The list comes from Jellyfin itself -- the same call the home page makes, per user -- rather than an
+    /// approximation of it, so this is a count of what is genuinely on screen and not of channels in
+    /// general. That is what keeps the feature proportional to a large Tvheadend: the page shows tens of
+    /// programmes whatever the lineup, and a still frame is only worth taking for one somebody will see.
     /// </remarks>
-    public int ProgramImageCandidates { get; set; } = 200;
+    public int ProgramImageCandidates { get; set; } = 60;
 
     /// <summary>Gets or sets how often, in seconds, the plugin looks for programmes that need a picture.</summary>
     /// <remarks>
