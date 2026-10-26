@@ -18,6 +18,10 @@ version: "1.0.0.0"
 # The Live TV API we bind to is unchanged back to 10.10, BUT our assembly is compiled for
 # net9.0 and a net8.0 10.10 server physically cannot load it. So the floor is 10.11, which
 # is the first net9.0 server release. Do NOT lower this to 10.10.x.
+# The csproj compiles against the 10.11.0 packages to match: a reference to a newer patch
+# (e.g. 10.11.11) makes every older 10.11 server refuse to load the assembly.
+# The csproj compiles against the 10.11.0 packages to match: a reference to a newer patch
+# (e.g. 10.11.11) makes every older 10.11 server refuse to load the assembly.
 targetAbi: "10.11.0.0"
 
 framework: "net9.0"

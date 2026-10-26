@@ -15,9 +15,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Compile against the server API, never ship it: ExcludeAssets/Private keeps bin/ clean. -->
-    <PackageReference Include="Jellyfin.Controller" Version="10.11.11" ExcludeAssets="runtime" Private="false" />
-    <PackageReference Include="Jellyfin.Model" Version="10.11.11" ExcludeAssets="runtime" Private="false" />
+    <!-- Compile against the server API, never ship it: ExcludeAssets/Private keeps bin/ clean.
+         Pinned to 10.11.0, the oldest server we support: the assembly then binds to that version or any
+         newer one, whereas a newer reference fails to load on every server older than it. -->
+    <PackageReference Include="Jellyfin.Controller" Version="10.11.0" ExcludeAssets="runtime" Private="false" />
+    <PackageReference Include="Jellyfin.Model" Version="10.11.0" ExcludeAssets="runtime" Private="false" />
     <!-- IHostedService only; the server already hosts it, hence the same compile-only treatment. -->
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.11" ExcludeAssets="runtime" Private="false" />
   </ItemGroup>

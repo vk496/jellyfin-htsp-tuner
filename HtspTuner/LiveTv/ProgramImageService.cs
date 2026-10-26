@@ -299,10 +299,21 @@ public sealed class ProgramImageService : BackgroundService
     // better answer.
     private IReadOnlyList<User> ActiveUsers()
     {
-        var all = _userManager.GetUsers().OrderByDescending(u => u.LastActivityDate ?? DateTime.MinValue).ToList();
+        var all = AllUsers().OrderByDescending(u => u.LastActivityDate ?? DateTime.MinValue).ToList();
         var since = DateTime.UtcNow - ActiveUserWindow;
         var active = all.Where(u => u.LastActivityDate >= since).ToList();
         return active.Count > 0 ? active : all;
+    }
+
+    // Jellyfin replaced IUserManager.Users with GetUsers() partway through 10.11, so a build can call
+    // neither directly and still load across the whole 10.11 line. We compile against 10.11.0 (the
+    // floor) and ask the running server for whichever of the two it has.
+    private IEnumerable<User> AllUsers()
+    {
+        var api = typeof(IUserManager);
+        var getter = api.GetMethod("GetUsers", Type.EmptyTypes) ?? api.GetProperty("Users")?.GetMethod
+            ?? throw new MissingMethodException(api.FullName, "GetUsers");
+        return (IEnumerable<User>)getter.Invoke(_userManager, null)!;
     }
 
     private static TimeSpan ScanInterval()

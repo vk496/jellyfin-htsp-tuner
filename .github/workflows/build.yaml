@@ -50,9 +50,41 @@ jobs:
             echo "No test project found -- skipping test step."
           fi
 
+  # One build has to load on every server from targetAbi up. Jellyfin breaks its API within a minor
+  # line (10.11.x replaced IUserManager.Users with GetUsers()), so JIT the shipped assembly against
+  # the oldest, the newest 10.11 and the newest 12.x to catch a missing member before users do.
+  abi:
+    name: Loads on Jellyfin ${{ matrix.jellyfin }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { jellyfin: "10.11.0", tf: net9.0, hosting: "9.0.11" }
+          - { jellyfin: "10.11.*", tf: net9.0, hosting: "9.0.11" }
+          - { jellyfin: "12.*", tf: net10.0, hosting: "10.0.0" }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            9.0.x
+            10.0.x
+
+      - name: Build plugin
+        run: dotnet build HtspTuner/HtspTuner.csproj --configuration Release
+
+      - name: JIT every method against Jellyfin ${{ matrix.jellyfin }}
+        run: >-
+          dotnet run --project tools/abi-check --configuration Release
+          -p:TF=${{ matrix.tf }} -p:JF="${{ matrix.jellyfin }}" -p:HA=${{ matrix.hosting }}
+          -p:PluginDll="$PWD/HtspTuner/bin/Release/net9.0/HtspTuner.dll"
+
   release:
     name: Package & Release
-    needs: build
+    needs: [build, abi]
     # Only build a release artifact for version tags (e.g. v1.0.0.0).
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
