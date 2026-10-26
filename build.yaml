@@ -51,12 +51,12 @@ artifacts:
 
 # Only the current version's notes -- each release carries just its own changelog.
 changelog: |-
-  - Load on every Jellyfin 10.11 server. The plugin was built against 10.11.11, so any older
-    10.11 server -- 10.11.5, say -- refused to load it, although it was offered to all of them.
-    It is now built against 10.11.0, and copes with Jellyfin renaming the call that lists users
-    partway through 10.11.
-  - Jellyfin 12 is supported by the same build. Every release is now checked to load on 10.11.0,
-    the newest 10.11 and the newest 12.
+  - Jellyfin 10.10 is supported. Servers on 10.10 get their own build (version 0.x), which is
+    handy on small boxes where 10.11 doesn't fit. 10.11 and 12 get the 1.x build as before;
+    Jellyfin picks the right one by itself.
+  - Load on every Jellyfin 10.11 server. The plugin was built against 10.11.11, so older 10.11
+    servers, such as 10.11.5, refused to load it.
+  - Jellyfin 12 is supported by the same build as 10.11. Every release is now checked to load on
+    the oldest and newest 10.10, 10.11 and 12 servers before it ships.
   - Name HTSP tuners "HTSP Tuner" instead of leaving them nameless, which Jellyfin's tuner list
-    shows as "Unknown". Tuners added before this update are named at startup; a name you typed
-    yourself is left alone.
+    shows as "Unknown". Existing tuners are named at startup; a name you typed is kept.
