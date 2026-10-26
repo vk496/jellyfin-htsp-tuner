@@ -301,9 +301,43 @@ public sealed class HtspTunerHost : ITunerHost, IConfigurableTunerHost, IDisposa
             await client.DisposeAsync().ConfigureAwait(false);
         }
 
-        // The connection is good, so the tuner is about to be saved: make sure the HTSP guide provider
-        // exists too, so the user gets EPG without hunting through "TV Guide Data Providers".
+        // The connection is good, so the tuner is about to be saved -- and Jellyfin saves this very object,
+        // so a name set here sticks. Make sure the HTSP guide provider exists too, so the user gets EPG
+        // without hunting through "TV Guide Data Providers".
+        if (string.IsNullOrWhiteSpace(info.FriendlyName))
+        {
+            info.FriendlyName = Name;
+        }
+
         EnsureGuideProvider();
+    }
+
+    // Jellyfin's tuner list titles each row `FriendlyName || <name of a built-in tuner type>`, and a plugin
+    // type is none of those, so a tuner saved without a name shows as "Unknown". Validate now names new
+    // tuners; this backfills the ones added before it did. Called once at startup.
+    internal void NameUnnamedTuners()
+    {
+        try
+        {
+            var options = _config.GetConfiguration<LiveTvOptions>("livetv");
+            var unnamed = options.TunerHosts
+                .Where(t => string.Equals(t.Type, Type, StringComparison.OrdinalIgnoreCase)
+                    && string.IsNullOrWhiteSpace(t.FriendlyName))
+                .ToList();
+            if (unnamed.Count == 0)
+            {
+                return;
+            }
+
+            unnamed.ForEach(t => t.FriendlyName = Name);
+            _config.SaveConfiguration("livetv", options);
+            _logger.LogInformation("Named {Count} unnamed HTSP tuner(s) \"{Name}\"", unnamed.Count, Name);
+        }
+        catch (Exception ex)
+        {
+            // Cosmetic only: the tuner works regardless, and the user can still name it by hand.
+            _logger.LogWarning(ex, "Could not name the unnamed HTSP tuners");
+        }
     }
 
     // Records which lineup the guide is using. Jellyfin's web UI renders the "TV Guide Data Providers" list

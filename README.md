@@ -117,12 +117,15 @@ closed upstream — they are collected here so they are not mistaken for bugs.
   takes minutes. So a push triggers a refresh at most once every N minutes (default 12 h, under
   *Advanced*). *Upstream fix:* a per-channel guide-update API.
 - **The HTSP guide provider shows as "Unknown" in the UI.** Jellyfin-web hard-codes the names of
-  guide-provider types, so a plugin-supplied one has no label. The tuner side has no such problem.
+  guide-provider types, so a plugin-supplied one has no label. Tuner rows have the same hard-coded
+  list but fall back to the tuner's name first, so the plugin names its tuners "HTSP Tuner".
   *Upstream fix:* a `ListingProviders/Types` endpoint (prepared, pending upstream).
 
 ## Requirements
 
-- **Jellyfin 10.11 or newer** (built for `net9.0`; `targetAbi` is `10.11.0.0`).
+- **Jellyfin 10.11.0 or newer, including 12.x** (built for `net9.0` against the 10.11.0 API;
+  `targetAbi` is `10.11.0.0`). CI checks that the same build loads on 10.11.0, the latest 10.11
+  and the latest 12.x. Jellyfin 10.10 and older are not supported: they run on .NET 8.
 - A reachable **Tvheadend** with HTSP enabled (default port **9982**), protocol **v43+**.
 - A Tvheadend user with streaming access. Empty username/password works if Tvheadend allows
   anonymous access.

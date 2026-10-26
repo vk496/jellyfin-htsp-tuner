@@ -110,6 +110,8 @@ public sealed class ProgramImageService : BackgroundService
     /// <inheritdoc/>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Not about images, but this is the plugin's one startup hook, and a plugin update means a restart.
+        _host.NameUnnamedTuners();
         _host.ChannelOpened += OnChannelOpened;
         try
         {
