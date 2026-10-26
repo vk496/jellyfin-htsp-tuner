@@ -141,7 +141,11 @@ jobs:
           cp -r HtspTuner "$legacy"
           sed -e 's/^targetAbi: .*/targetAbi: "10.10.0.0"/' -e 's/^framework: .*/framework: "net8.0"/' build.yaml > "$legacy/build.yaml"
           zip_path="$(jprm --verbosity=debug plugin build "$legacy" --version="${legacy_version}" --output=./artifacts)"
-          echo "Built: ${zip_path}"
+          # Named after the release rather than its own version, so the release page reads
+          # htsp-tuner_1.1.0.0_jellyfin-10.10.zip next to htsp-tuner_1.1.0.0.zip. Jellyfin only reads
+          # the version inside the zip.
+          mv "${zip_path}" "artifacts/htsp-tuner_${version}_jellyfin-10.10.zip"
+          echo "Built: artifacts/htsp-tuner_${version}_jellyfin-10.10.zip"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

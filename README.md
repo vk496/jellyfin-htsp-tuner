@@ -60,8 +60,8 @@ It adds itself as a normal tuner: **Live TV → Add Tuner Device → HTSP Tuner*
 Channels and the guide show up on their own. Updates arrive through the same catalog.
 
 Without the repository: download the zip for your server from
-[Releases](https://github.com/vk496/jellyfin-htsp-tuner/releases) (`htsp-tuner_0.x` for 10.10,
-`htsp-tuner_1.x` for 10.11 and 12), extract it into a new folder in Jellyfin's `plugins`
+[Releases](https://github.com/vk496/jellyfin-htsp-tuner/releases) (the `_jellyfin-10.10` one
+for 10.10, the other for 10.11 and 12), extract it into a new folder in Jellyfin's `plugins`
 directory, and restart.
 
 ## Known limitations
