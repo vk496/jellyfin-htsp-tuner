@@ -1,7 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <!-- One build per server runtime: net8.0 for Jellyfin 10.10, net9.0 for 10.11 and newer (12.x runs
+         .NET 10, which loads it). jprm picks one per zip (its dotnet-framework option). -->
+    <TargetFrameworks>net8.0;net9.0</TargetFrameworks>
     <RootNamespace>HtspTuner</RootNamespace>
     <AssemblyVersion>1.0.0.50</AssemblyVersion>
     <FileVersion>1.0.0.50</FileVersion>
@@ -14,13 +16,19 @@
     <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
   </PropertyGroup>
 
-  <ItemGroup>
-    <!-- Compile against the server API, never ship it: ExcludeAssets/Private keeps bin/ clean.
-         Pinned to 10.11.0, the oldest server we support: the assembly then binds to that version or any
-         newer one, whereas a newer reference fails to load on every server older than it. -->
+  <!-- Compile against the server API, never ship it: ExcludeAssets/Private keeps bin/ clean.
+       Pinned to the first release of each line, the oldest server that build supports: the assembly then
+       binds to that version or any newer one, whereas a newer reference fails to load on every server
+       older than it. Hosting.Abstractions is for IHostedService only, which the server already hosts. -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
+    <PackageReference Include="Jellyfin.Controller" Version="10.10.0" ExcludeAssets="runtime" Private="false" />
+    <PackageReference Include="Jellyfin.Model" Version="10.10.0" ExcludeAssets="runtime" Private="false" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="8.0.1" ExcludeAssets="runtime" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net9.0'">
     <PackageReference Include="Jellyfin.Controller" Version="10.11.0" ExcludeAssets="runtime" Private="false" />
     <PackageReference Include="Jellyfin.Model" Version="10.11.0" ExcludeAssets="runtime" Private="false" />
-    <!-- IHostedService only; the server already hosts it, hence the same compile-only treatment. -->
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.11" ExcludeAssets="runtime" Private="false" />
   </ItemGroup>
 

@@ -13,15 +13,13 @@ guid: "48472334-959b-4838-a963-3a92e5a603d1"
 
 version: "1.0.0.0"
 
-# targetAbi is a MINIMUM server version, not an exact match: Jellyfin loads the plugin on
-# any server whose ABI is >= this value, and HIDES it from any server below it.
-# The Live TV API we bind to is unchanged back to 10.10, BUT our assembly is compiled for
-# net9.0 and a net8.0 10.10 server physically cannot load it. So the floor is 10.11, which
-# is the first net9.0 server release. Do NOT lower this to 10.10.x.
-# The csproj compiles against the 10.11.0 packages to match: a reference to a newer patch
-# (e.g. 10.11.11) makes every older 10.11 server refuse to load the assembly.
-# The csproj compiles against the 10.11.0 packages to match: a reference to a newer patch
-# (e.g. 10.11.11) makes every older 10.11 server refuse to load the assembly.
+# targetAbi is a MINIMUM server version, not an exact match: Jellyfin offers the plugin to
+# any server whose version is >= this value, and installs the highest such version.
+# This file describes the net9.0 build for 10.11 and newer. The release workflow also packs a
+# net8.0 build for 10.10 from a copy of it, with targetAbi 10.10.0.0 and a version below every
+# 1.x, so each server gets the build it can load. The csproj compiles each build against the
+# first release of its line (10.10.0, 10.11.0): a reference to a newer patch makes every older
+# server of that line refuse to load the assembly.
 targetAbi: "10.11.0.0"
 
 framework: "net9.0"

@@ -1,8 +1,12 @@
 using System.Collections.Concurrent;
 using System.Globalization;
 using Jellyfin.Data.Enums;
+#if NET9_0_OR_GREATER
 using Jellyfin.Database.Implementations.Entities;
 using Jellyfin.Database.Implementations.Enums;
+#else
+using Jellyfin.Data.Entities; // 10.10 kept the user entity here; 10.11 moved it
+#endif
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller;
 using MediaBrowser.Controller.Library;

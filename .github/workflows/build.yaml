@@ -52,7 +52,8 @@ jobs:
 
   # One build has to load on every server from targetAbi up. Jellyfin breaks its API within a minor
   # line (10.11.x replaced IUserManager.Users with GetUsers()), so JIT the shipped assembly against
-  # the oldest, the newest 10.11 and the newest 12.x to catch a missing member before users do.
+  # the oldest and newest server of each build's range to catch a missing member before users do.
+  # `build` is the plugin's target: net8.0 ships to 10.10, net9.0 to 10.11 and up.
   abi:
     name: Loads on Jellyfin ${{ matrix.jellyfin }}
     runs-on: ubuntu-latest
@@ -60,9 +61,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { jellyfin: "10.11.0", tf: net9.0, hosting: "9.0.11" }
-          - { jellyfin: "10.11.*", tf: net9.0, hosting: "9.0.11" }
-          - { jellyfin: "12.*", tf: net10.0, hosting: "10.0.0" }
+          - { jellyfin: "10.10.0", build: net8.0, tf: net8.0, hosting: "8.0.1" }
+          - { jellyfin: "10.10.*", build: net8.0, tf: net8.0, hosting: "8.0.1" }
+          - { jellyfin: "10.11.0", build: net9.0, tf: net9.0, hosting: "9.0.11" }
+          - { jellyfin: "10.11.*", build: net9.0, tf: net9.0, hosting: "9.0.11" }
+          - { jellyfin: "12.0.0", build: net9.0, tf: net10.0, hosting: "10.0.0" }
+          - { jellyfin: "12.*", build: net9.0, tf: net10.0, hosting: "10.0.0" }
     steps:
       - uses: actions/checkout@v4
 
@@ -70,6 +74,7 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: |
+            8.0.x
             9.0.x
             10.0.x
 
@@ -80,7 +85,7 @@ jobs:
         run: >-
           dotnet run --project tools/abi-check --configuration Release
           -p:TF=${{ matrix.tf }} -p:JF="${{ matrix.jellyfin }}" -p:HA=${{ matrix.hosting }}
-          -p:PluginDll="$PWD/HtspTuner/bin/Release/net9.0/HtspTuner.dll"
+          -p:PluginDll="$PWD/HtspTuner/bin/Release/${{ matrix.build }}/HtspTuner.dll"
 
   release:
     name: Package & Release
@@ -117,23 +122,36 @@ jobs:
         id: package
         shell: bash
         run: |
+          set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
           mkdir -p artifacts
           zip_path="$(jprm --verbosity=debug plugin build . --version="${version}" --output=./artifacts)"
           echo "Built: ${zip_path}"
-          echo "zip_path=${zip_path}" >> "$GITHUB_OUTPUT"
-          echo "zip_name=$(basename "${zip_path}")" >> "$GITHUB_OUTPUT"
+
+          # The Jellyfin 10.10 build: net8.0, its own targetAbi, and a version below every 10.11 one
+          # (A.B.C.D -> 0.A.B.(C*1000+D), so 1.1.0.0 -> 0.1.1.0). A server installs the highest version
+          # whose targetAbi it meets, so 10.11+ servers keep getting the net9.0 build and only 10.10
+          # servers get this one.
+          # ponytail: unique only while D < 1000; widen the multiplier if a revision ever gets there.
+          # Built from a copy of the plugin project alone: jprm retargets every project it finds, and
+          # the tests are net9.0-only. The copy also leaves build.yaml untouched for the manifest commit.
+          IFS=. read -r a b c d <<< "${version}"
+          legacy_version="0.${a}.${b}.$((c * 1000 + d))"
+          legacy="$RUNNER_TEMP/legacy"
+          cp -r HtspTuner "$legacy"
+          sed -e 's/^targetAbi: .*/targetAbi: "10.10.0.0"/' -e 's/^framework: .*/framework: "net8.0"/' build.yaml > "$legacy/build.yaml"
+          zip_path="$(jprm --verbosity=debug plugin build "$legacy" --version="${legacy_version}" --output=./artifacts)"
+          echo "Built: ${zip_path}"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            ${{ steps.package.outputs.zip_path }}
+          files: artifacts/*.zip
           generate_release_notes: true
           fail_on_unmatched_files: true
 
       # Publish this version into manifest.json on main so Jellyfin clients that added the
-      # repository URL see the update. The zip is served from the GitHub Release asset above.
+      # repository URL see the update. The zips are served from the GitHub Release assets above.
       - name: Update repository manifest
         shell: bash
         env:
@@ -143,11 +161,13 @@ jobs:
           GIT_COMMITTER_EMAIL: "41898282+github-actions[bot]@users.noreply.github.com"
         run: |
           set -euo pipefail
-          dl_url="${{ github.server_url }}/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/${{ steps.package.outputs.zip_name }}"
           git fetch origin main
           git checkout main
           [ -f manifest.json ] || jprm repo init .
-          jprm repo add --plugin-url "${dl_url}" . "${{ steps.package.outputs.zip_path }}"
+          for zip in artifacts/*.zip; do
+            dl_url="${{ github.server_url }}/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/$(basename "${zip}")"
+            jprm repo add --plugin-url "${dl_url}" . "${zip}"
+          done
           git add manifest.json
           if git diff --cached --quiet; then
             echo "manifest.json unchanged"
