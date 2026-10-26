@@ -116,7 +116,7 @@
                 "version": "0.1.1.0",
                 "changelog": "- Jellyfin 10.10 is supported. Servers on 10.10 get their own build (version 0.x), which is\n  handy on small boxes where 10.11 doesn't fit. 10.11 and 12 get the 1.x build as before;\n  Jellyfin picks the right one by itself.\n- Load on every Jellyfin 10.11 server. The plugin was built against 10.11.11, so older 10.11\n  servers, such as 10.11.5, refused to load it.\n- Jellyfin 12 is supported by the same build as 10.11. Every release is now checked to load on\n  the oldest and newest 10.10, 10.11 and 12 servers before it ships.\n- Name HTSP tuners \"HTSP Tuner\" instead of leaving them nameless, which Jellyfin's tuner list\n  shows as \"Unknown\". Existing tuners are named at startup; a name you typed is kept.",
                 "targetAbi": "10.10.0.0",
-                "sourceUrl": "https://github.com/vk496/jellyfin-htsp-tuner/releases/download/v1.1.0.0/htsp-tuner_0.1.1.0.zip",
+                "sourceUrl": "https://github.com/vk496/jellyfin-htsp-tuner/releases/download/v1.1.0.0/htsp-tuner_1.1.0.0_jellyfin-10.10.zip",
                 "checksum": "4d04217f60ed3f3f7bd403835d475418",
                 "timestamp": "2026-10-26T21:06:54Z"
             }
