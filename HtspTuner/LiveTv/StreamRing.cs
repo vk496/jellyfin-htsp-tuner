@@ -179,6 +179,11 @@ internal sealed class StreamRing : IDisposable
         public override int Read(Span<byte> buffer)
             => _ring.ReadInto(ref _cursor, buffer, CancellationToken.None);
 
+        // Stream's default async implementation calls the synchronous Read(), which uses
+        // CancellationToken.None. Pass the caller's token into the ring wait instead.
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+            => Task.Run(() => _ring.ReadInto(ref _cursor, buffer.AsSpan(offset, count), cancellationToken), cancellationToken);
+
         public override void Flush()
         {
         }

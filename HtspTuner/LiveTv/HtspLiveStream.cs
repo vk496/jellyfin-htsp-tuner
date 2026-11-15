@@ -356,17 +356,22 @@ internal sealed class HtspLiveStream : ILiveStream, IDirectStreamProvider
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeout.CancelAfter(TimeSpan.FromSeconds(6));
 
-            var captured = await CaptureSampleAsync(probePath, ProbeSampleBytes, timeout.Token).ConfigureAwait(false);
-
-            var info = await _mediaEncoder.GetMediaInfo(
-                new MediaInfoRequest
+            var probed = await ProbeSampleAsync(
+                _ring, _streams, probePath,
+                async (path, token) =>
                 {
-                    MediaSource = new MediaSourceInfo { Protocol = MediaProtocol.File, Path = probePath, Container = "ts" },
-                    MediaType = DlnaProfileType.Video,
+                    var info = await _mediaEncoder.GetMediaInfo(
+                        new MediaInfoRequest
+                        {
+                            MediaSource = new MediaSourceInfo { Protocol = MediaProtocol.File, Path = path, Container = "ts" },
+                            MediaType = DlnaProfileType.Video,
+                        },
+                        token).ConfigureAwait(false);
+                    return info?.MediaStreams;
                 },
                 timeout.Token).ConfigureAwait(false);
 
-            if (info?.MediaStreams is { Count: > 0 } probed)
+            if (probed is { Count: > 0 })
             {
                 MediaStreamBuilder.MergeProbe(_streams, probed);
                 RecomputeSourceBitrate();
@@ -375,7 +380,7 @@ internal sealed class HtspLiveStream : ILiveStream, IDirectStreamProvider
                 var video = _streams.Find(s => s.Type == MediaStreamType.Video);
                 _logger.LogDebug(
                     "Probed channel {Channel} from {Bytes}B: interlaced={Interlaced} profile={Profile} bitDepth={BitDepth} transfer={Transfer}",
-                    ChannelId, captured, video?.IsInterlaced, video?.Profile, video?.BitDepth, video?.ColorTransfer);
+                    ChannelId, new FileInfo(probePath).Length, video?.IsInterlaced, video?.Profile, video?.BitDepth, video?.ColorTransfer);
             }
         }
         catch (Exception ex)
@@ -396,45 +401,57 @@ internal sealed class HtspLiveStream : ILiveStream, IDirectStreamProvider
         }
     }
 
-    /// <summary>Writes a short, self-contained slice of the live TS to a file.</summary>
-    /// <remarks>
-    /// Reading the ring costs nothing extra: the bytes are already buffered, so a caller that only needs a
-    /// few seconds of this channel (metadata probe, thumbnail grab) never opens a second subscription.
-    /// </remarks>
-    /// <param name="path">The file to write.</param>
-    /// <param name="maxBytes">How much to write before stopping.</param>
-    /// <param name="ct">A cancellation token; also the caller's time budget.</param>
-    /// <returns>The number of bytes written.</returns>
-    internal async Task<int> CaptureSampleAsync(string path, int maxBytes, CancellationToken ct)
+    /// <summary>Probes a short sample, retrying with a longer capture if decoder headers are missing.</summary>
+    /// <param name="ring">The existing live stream ring.</param>
+    /// <param name="expected">The emitted streams described by HTSP.</param>
+    /// <param name="path">The temporary sample path.</param>
+    /// <param name="probe">The media encoder probe operation.</param>
+    /// <param name="ct">The overall probe deadline or caller cancellation.</param>
+    /// <returns>Validated stream metadata; incomplete results are never returned for merging or caching.</returns>
+    internal static async Task<IReadOnlyList<MediaStream>> ProbeSampleAsync(
+        StreamRing ring, IReadOnlyList<MediaStream> expected, string path,
+        Func<string, CancellationToken, Task<IReadOnlyList<MediaStream>?>> probe, CancellationToken ct)
     {
-        var total = 0;
-        using var reader = _ring.OpenReader();
-        var file = File.Create(path);
-        await using (file.ConfigureAwait(false))
+        for (var attempt = 0; attempt < 2; attempt++)
         {
-            var buffer = ArrayPool<byte>.Shared.Rent(64 * 1024);
+            ct.ThrowIfCancellationRequested();
+            // A second reader joins at the latest buffered key frame. This gives sparse/late headers
+            // another chance without a second tuner subscription or extending the overall deadline.
+            var duration = TimeSpan.FromMilliseconds(attempt == 0 ? 1500 : 3000);
+            var captured = await StreamSample.CaptureAsync(ring, path, ProbeSampleBytes, ct, duration).ConfigureAwait(false);
+            if (captured == 0)
+            {
+                continue;
+            }
+
+            IReadOnlyList<MediaStream>? probed;
             try
             {
-                while (total < maxBytes)
-                {
-                    var read = await reader.ReadAsync(buffer, ct).ConfigureAwait(false);
-                    if (read <= 0)
-                    {
-                        break;
-                    }
-
-                    await file.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
-                    total += read;
-                }
+                probed = await probe(path, ct).ConfigureAwait(false);
             }
-            finally
+            catch (Exception) when (attempt == 0 && !ct.IsCancellationRequested)
             {
-                ArrayPool<byte>.Shared.Return(buffer);
+                // An undecodable early sample may precede the first key frame. Try a longer sample.
+                continue;
+            }
+
+            ct.ThrowIfCancellationRequested();
+            if (MediaStreamBuilder.CanMergeProbe(expected, probed))
+            {
+                return probed!;
             }
         }
 
-        return total;
+        throw new InvalidDataException("The metadata sample did not contain decoder information for all emitted video/audio streams.");
     }
+
+    /// <summary>Writes a short, self-contained slice of the live TS to a file.</summary>
+    /// <param name="path">The file to write.</param>
+    /// <param name="maxBytes">How much to write before stopping.</param>
+    /// <param name="ct">The caller's cancellation token.</param>
+    /// <returns>The number of bytes written.</returns>
+    internal Task<int> CaptureSampleAsync(string path, int maxBytes, CancellationToken ct)
+        => StreamSample.CaptureAsync(_ring, path, maxBytes, ct);
 
     private void RecomputeSourceBitrate()
     {

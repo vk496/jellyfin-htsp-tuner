@@ -127,6 +127,52 @@ internal static class MediaStreamBuilder
         }
     }
 
+    /// <summary>Checks that a short probe has decoder metadata for the streams we actually emit.</summary>
+    /// <param name="ours">The expected HTSP-derived streams in mux order.</param>
+    /// <param name="probed">The streams found in the sample.</param>
+    /// <returns>Whether the result is suitable for merging and caching.</returns>
+    internal static bool CanMergeProbe(IReadOnlyList<MediaStream> ours, IReadOnlyList<MediaStream>? probed)
+    {
+        if (probed is null)
+        {
+            return false;
+        }
+
+        var expected = ours.Where(s => s.Type is MediaStreamType.Video or MediaStreamType.Audio).ToList();
+        var found = probed.Where(s => s.Type is MediaStreamType.Video or MediaStreamType.Audio).ToList();
+        if (expected.Count == 0 || expected.Count != found.Count)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < expected.Count; i++)
+        {
+            var e = expected[i];
+            var p = found[i];
+            if (e.Type != p.Type || e.Index != p.Index || !string.Equals(e.Codec, p.Codec, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (p.Type == MediaStreamType.Video)
+            {
+                // A PMT entry alone can produce a video stream with false/default scan metadata.
+                // Require decoded headers before overwriting IsInterlaced or populating the cache.
+                if (p.Width is not > 0 || p.Height is not > 0 || string.IsNullOrWhiteSpace(p.PixelFormat)
+                    || string.IsNullOrWhiteSpace(p.Profile) || string.Equals(p.Profile, "unknown", StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+            }
+            else if (p.Channels is not > 0 || p.SampleRate is not > 0)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     // A realistic per-resolution estimate. Without it, Jellyfin assumes a huge default (~20 Mbit/s) for a
     // live source, decides it exceeds the client's bitrate cap, and re-encodes+downscales the video — a
     // software encode that barely keeps up at HD and falls behind at 4K, which is what causes the stutter.
